@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .env
 ml/models/*.pkl
+data/*.csv
+test_env.py
