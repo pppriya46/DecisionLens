@@ -1,11 +1,6 @@
--- db/schema.sql
--- Decision Lens Database Schema
--- Creates all tables needed for the incident intelligence platform
-
--- Enable pgvector extension for storing embeddings later
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Main incidents table
+
 CREATE TABLE IF NOT EXISTS incidents (
     id                      SERIAL PRIMARY KEY,
     number                  VARCHAR(50) UNIQUE NOT NULL,
@@ -33,7 +28,6 @@ CREATE TABLE IF NOT EXISTS incidents (
     created_at              TIMESTAMP DEFAULT NOW()
 );
 
--- Table to store ML severity predictions
 CREATE TABLE IF NOT EXISTS ml_predictions (
     id                  SERIAL PRIMARY KEY,
     incident_id         INTEGER REFERENCES incidents(id),
@@ -43,7 +37,6 @@ CREATE TABLE IF NOT EXISTS ml_predictions (
     created_at          TIMESTAMP DEFAULT NOW()
 );
 
--- Table to store embeddings for RAG system
 CREATE TABLE IF NOT EXISTS incident_embeddings (
     id              SERIAL PRIMARY KEY,
     incident_id     INTEGER REFERENCES incidents(id),
@@ -51,7 +44,7 @@ CREATE TABLE IF NOT EXISTS incident_embeddings (
     created_at      TIMESTAMP DEFAULT NOW()
 );
 
--- Indexes for fast querying
+
 CREATE INDEX IF NOT EXISTS idx_incidents_priority 
     ON incidents(priority);
 
@@ -63,3 +56,11 @@ CREATE INDEX IF NOT EXISTS idx_incidents_state
 
 CREATE INDEX IF NOT EXISTS idx_incidents_opened_at 
     ON incidents(opened_at);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_opened_at 
+    ON incidents(opened_at);
+
+CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
+    ON incident_embeddings
+    USING hnsw (embedding_vector vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);

@@ -1,0 +1,44 @@
+version: '3.8'
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: decisionlens_postgres_dev
+    environment:
+      POSTGRES_DB: decisionlens_db
+      POSTGRES_USER: decisionlens
+      POSTGRES_PASSWORD: decisionlens123
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - postgres_data_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U decisionlens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: decisionlens_api_dev
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=decisionlens_db
+      - DB_USER=decisionlens
+      - DB_PASSWORD=decisionlens123
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./api:/app/api
+      - ./ml:/app/ml
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m flask run --host=0.0.0.0 --port=5000 --reload
+
+volumes:
+  postgres_data_dev:
