@@ -8,12 +8,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Config ─────────────────────────────────────────────────────────────
 MODEL_PATH = "ml/models/severity_rf_v1.pkl"
 ENCODER_PATH = "ml/models/label_encoders.pkl"
 
-
-# ── Load model once at startup ─────────────────────────────────────────
 
 def load_model():
     """Load trained model and encoders from disk."""
@@ -28,7 +25,6 @@ def load_model():
     return model, encoders
 
 
-# ── Predict severity ───────────────────────────────────────────────────
 
 def predict_severity(
     category: str,
@@ -51,7 +47,7 @@ def predict_severity(
     """
     model, encoders = load_model()
 
-    # ── Build feature row ──────────────────────────────────────────────
+
     # Time features
     if opened_at is not None:
         opened_at = pd.to_datetime(opened_at, errors='coerce')
@@ -66,7 +62,7 @@ def predict_severity(
     is_weekend = int(day_of_week >= 5)
     is_business_hours = int(9 <= hour_of_day <= 17)
 
-    # ── Encode categoricals ────────────────────────────────────────────
+
     def safe_encode(encoder, value):
         """Encode a value, returning -1 if unseen."""
         classes = list(encoder.classes_)
@@ -82,7 +78,6 @@ def predict_severity(
         encoders['contact_type'], str(contact_type).strip()
     )
 
-    # ── Assemble feature vector ────────────────────────────────────────
     features = pd.DataFrame([{
         'category_encoded':      category_encoded,
         'subcategory_encoded':   subcategory_encoded,
@@ -98,7 +93,6 @@ def predict_severity(
         'is_business_hours':     is_business_hours,
     }])
 
-    # ── Run prediction ─────────────────────────────────────────────────
     predicted_index = model.predict(features)[0]
     probabilities = model.predict_proba(features)[0]
 
@@ -117,7 +111,6 @@ def predict_severity(
     }
 
 
-# ── Test it manually ───────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("Testing severity prediction...\n")

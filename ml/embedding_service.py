@@ -1,7 +1,3 @@
-# ml/embedding_service.py
-# Purpose: Generate embeddings for all incidents and store in pgvector
-# This is Layer 1 of our custom RAG pipeline
-
 import os
 import time
 import psycopg2
@@ -11,7 +7,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Setup ──────────────────────────────────────────────────────────────
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 DB_CONFIG = {
@@ -33,30 +28,25 @@ def get_db_connection():
 
 def build_incident_text(incident):
     """
-    Combine incident fields into one string for embedding.
-    The richer the text, the better the similarity search.
+    Use real text fields for much better embeddings!
     """
     parts = [
-        f"Category: {incident['category'] or 'unknown'}",
-        f"Subcategory: {incident['subcategory'] or 'unknown'}",
-        f"Symptom: {incident['u_symptom'] or 'unknown'}",
+        f"Issue: {incident['initial_message'] or 'unknown'}",
+        f"Type: {incident['issue_type'] or 'unknown'}",
+        f"Product Area: {incident['product_area'] or 'unknown'}",
         f"Priority: {incident['priority'] or 'unknown'}",
-        f"Impact: {incident['impact'] or 'unknown'}",
-        f"Urgency: {incident['urgency'] or 'unknown'}",
-        f"Resolution: {incident['closed_code'] or 'unknown'}",
+        f"Resolution: {incident['resolution_summary'] or 'unknown'}",
+        f"Platform: {incident['platform'] or 'unknown'}",
     ]
     return " | ".join(parts)
 
 
 def fetch_incidents_without_embeddings(conn, limit=1000):
-    """
-    Fetch incidents that don't have embeddings yet.
-    Uses LEFT JOIN to find gaps.
-    """
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
-            SELECT i.id, i.category, i.subcategory, i.u_symptom,
-                   i.priority, i.impact, i.urgency, i.closed_code
+            SELECT i.id, i.initial_message, i.issue_type,
+                   i.product_area, i.priority,
+                   i.resolution_summary, i.platform
             FROM incidents i
             LEFT JOIN incident_embeddings ie ON i.id = ie.incident_id
             WHERE ie.id IS NULL
@@ -82,7 +72,6 @@ def store_embeddings(conn, incident_ids, embeddings):
     Store embeddings in the incident_embeddings table.
     Converts embeddings to pgvector string format.
     """
-    # Convert embeddings to pgvector format (string like "[0.1, 0.2, ...]")
     rows = [(inc_id, str(emb)) for inc_id, emb in zip(incident_ids, embeddings)]
 
     if not rows:
@@ -115,7 +104,6 @@ def run_embedding_pipeline(limit=1000):
 
     conn = get_db_connection()
 
-    # Fetch incidents that need embeddings
     incidents = fetch_incidents_without_embeddings(conn, limit=limit)
     print(f"Found {len(incidents)} incidents without embeddings")
 
@@ -124,13 +112,11 @@ def run_embedding_pipeline(limit=1000):
         conn.close()
         return
 
-    # Process in batches
     total_embedded = 0
 
     for i in range(0, len(incidents), BATCH_SIZE):
         batch = incidents[i:i + BATCH_SIZE]
 
-        # Build text for each incident in batch
         texts = [build_incident_text(inc) for inc in batch]
         incident_ids = [inc['id'] for inc in batch]
 
@@ -138,16 +124,15 @@ def run_embedding_pipeline(limit=1000):
               f"({len(batch)} incidents)...", end=" ")
 
         try:
-            # Generate embeddings
+    
             embeddings = generate_embeddings(texts)
 
-            # Store in database
+   
             store_embeddings(conn, incident_ids, embeddings)
 
             total_embedded += len(batch)
             print(f"Done. Total embedded so far: {total_embedded}")
 
-            # Small delay to be nice to the API
             time.sleep(0.5)
 
         except Exception as e:
@@ -161,6 +146,4 @@ def run_embedding_pipeline(limit=1000):
 
 
 if __name__ == "__main__":
-    # Start safe — embed first 1000 incidents
-    # Once verified, we'll run for all 24,918
-    run_embedding_pipeline(limit=24918)
+    run_embedding_pipeline(limit=100000)

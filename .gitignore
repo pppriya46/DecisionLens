@@ -1,8 +1,40 @@
-.DS_Store
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
+env/
+ENV/
+
+# Environment variables
 .env
-ml/models/*.pkl
+.env.local
+
+# Database
+*.db
+*.sqlite3
+postgres_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Data files (too large for git)
 data/*.csv
-test_env.py
+data/data.csv
+data/incidents_cleaned.csv
+
+# Logs
+*.log
+logs/data/old/

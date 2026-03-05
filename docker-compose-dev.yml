@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   postgres:
     image: ankane/pgvector:latest
@@ -17,6 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
   api:
     build:
       context: .
@@ -29,6 +29,8 @@ services:
       - DB_USER=decisionlens
       - DB_PASSWORD=decisionlens123
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FLASK_APP=api/main.py
+      - FLASK_ENV=development
     ports:
       - "5000:5000"
     volumes:

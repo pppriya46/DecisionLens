@@ -1,59 +1,58 @@
-"""
-Pre-process incident_event_log.csv
-Keep only the LATEST state per incident number
-before loading into PostgreSQL
-"""
-
 import pandas as pd
 import os
 
-CSV_PATH     = "data/incident_event_log.csv"
-OUTPUT_PATH  = "data/incidents_cleaned.csv"
-
-# Priority order for incident states
-# Higher number = more final state
-STATE_PRIORITY = {
-    "New":        1,
-    "Active":     2,
-    "Awaiting User Info": 3,
-    "Awaiting Problem":   4,
-    "Awaiting Vendor":    5,
-    "Resolved":   6,
-    "Closed":     7,
-}
-
-def get_state_priority(state):
-    """Return priority number for a given state"""
-    return STATE_PRIORITY.get(str(state).strip(), 0)
+CSV_PATH    = "data/data.csv"
+OUTPUT_PATH = "data/incidents_cleaned.csv"
 
 def main():
     print(f"Reading CSV: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
-    print(f"Total rows (all events): {len(df)}")
-    print(f"Unique incidents       : {df['number'].nunique()}")
+    print(f"Total rows: {len(df)}")
 
-    # Add priority column based on state
-    df['state_priority'] = df['incident_state'].map(get_state_priority)
+    # ── Fix data types ──────────────────────────────────────
+    # Parse timestamps
+    df['created_at'] = pd.to_datetime(df['created_at'], errors='coerce')
 
-    # Sort by incident number + state priority
-    # So the most final state is LAST for each incident
-    df = df.sort_values(
-        ['number', 'state_priority'],
-        ascending=[True, True]
+    # Fix boolean columns
+    df['reopened']       = df['reopened'].astype(bool)
+    df['has_attachment'] = df['has_attachment'].astype(bool)
+
+    # Fix numeric columns
+    df['resolution_time_hours'] = pd.to_numeric(
+        df['resolution_time_hours'], errors='coerce'
     )
+    df['csat_score'] = pd.to_numeric(df['csat_score'], errors='coerce')
 
-    # Keep only the LAST (most final) row per incident
-    df_final = df.groupby('number').last().reset_index()
+    # ── Fix data quality ────────────────────────────────────
+    # Replace empty strings with None
+    string_cols = [
+        'customer_segment', 'channel', 'product_area', 'issue_type',
+        'priority', 'status', 'sla_plan', 'initial_message',
+        'agent_first_reply', 'resolution_summary', 'customer_sentiment',
+        'platform', 'region'
+    ]
+    for col in string_cols:
+        if col in df.columns:
+            df[col] = df[col].replace('', None)
+            df[col] = df[col].replace('?', None)
 
-    # Drop the helper column
-    df_final = df_final.drop(columns=['state_priority'])
+    # ── Remove duplicates ───────────────────────────────────
+    before = len(df)
+    df = df.drop_duplicates(subset=['ticket_id'])
+    after = len(df)
+    print(f"Removed {before - after} duplicate tickets")
 
-    print(f"Rows after deduplication: {len(df_final)}")
-    print(f"\nState distribution:")
-    print(df_final['incident_state'].value_counts())
+    # ── Show stats ──────────────────────────────────────────
+    print(f"\nRows after cleaning: {len(df)}")
+    print(f"\nIssue type distribution:")
+    print(df['issue_type'].value_counts())
+    print(f"\nPriority distribution:")
+    print(df['priority'].value_counts())
+    print(f"\nStatus distribution:")
+    print(df['status'].value_counts())
 
     # Save cleaned CSV
-    df_final.to_csv(OUTPUT_PATH, index=False)
+    df.to_csv(OUTPUT_PATH, index=False)
     print(f"\nSaved cleaned CSV to: {OUTPUT_PATH}")
 
 if __name__ == "__main__":

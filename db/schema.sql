@@ -1,66 +1,48 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
-
 CREATE TABLE IF NOT EXISTS incidents (
-    id                      SERIAL PRIMARY KEY,
-    number                  VARCHAR(50) UNIQUE NOT NULL,
-    incident_state          VARCHAR(50),
-    active                  BOOLEAN,
-    reassignment_count      INTEGER DEFAULT 0,
-    reopen_count            INTEGER DEFAULT 0,
-    sys_mod_count           INTEGER DEFAULT 0,
-    made_sla                BOOLEAN,
-    contact_type            VARCHAR(100),
-    location                VARCHAR(100),
-    category                VARCHAR(100),
-    subcategory             VARCHAR(100),
-    u_symptom               VARCHAR(255),
-    impact                  VARCHAR(50),
-    urgency                 VARCHAR(50),
-    priority                VARCHAR(50),
-    assignment_group        VARCHAR(100),
-    knowledge               BOOLEAN,
-    notify                  VARCHAR(100),
-    closed_code             VARCHAR(100),
-    opened_at               TIMESTAMP,
-    resolved_at             TIMESTAMP,
-    closed_at               TIMESTAMP,
-    created_at              TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS ml_predictions (
-    id                  SERIAL PRIMARY KEY,
-    incident_id         INTEGER REFERENCES incidents(id),
-    predicted_severity  VARCHAR(50),
-    confidence          FLOAT,
-    model_version       VARCHAR(50),
-    created_at          TIMESTAMP DEFAULT NOW()
+    id                    SERIAL PRIMARY KEY,
+    ticket_id             VARCHAR(20) UNIQUE NOT NULL,
+    created_at            TIMESTAMP,
+    customer_id           VARCHAR(20),
+    customer_segment      VARCHAR(50),
+    channel               VARCHAR(50),
+    product_area          VARCHAR(100),
+    issue_type            VARCHAR(100),
+    priority              VARCHAR(20),
+    status                VARCHAR(50),
+    sla_plan              VARCHAR(20),
+    initial_message       TEXT,
+    agent_first_reply     TEXT,
+    resolution_summary    TEXT,
+    resolution_time_hours FLOAT,
+    reopened              BOOLEAN,
+    customer_sentiment    VARCHAR(20),
+    csat_score            INTEGER,
+    has_attachment        BOOLEAN,
+    platform              VARCHAR(50),
+    region                VARCHAR(20)
 );
 
 CREATE TABLE IF NOT EXISTS incident_embeddings (
-    id              SERIAL PRIMARY KEY,
-    incident_id     INTEGER REFERENCES incidents(id),
+    id            SERIAL PRIMARY KEY,
+    incident_id   INTEGER REFERENCES incidents(id) ON DELETE CASCADE,
     embedding_vector vector(1536),
-    created_at      TIMESTAMP DEFAULT NOW()
+    created_at    TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS severity_predictions (
+    id            SERIAL PRIMARY KEY,
+    incident_id   INTEGER REFERENCES incidents(id) ON DELETE CASCADE,
+    predicted_severity VARCHAR(20),
+    confidence    FLOAT,
+    created_at    TIMESTAMP DEFAULT NOW()
+);
 
-CREATE INDEX IF NOT EXISTS idx_incidents_priority 
-    ON incidents(priority);
-
-CREATE INDEX IF NOT EXISTS idx_incidents_category 
-    ON incidents(category);
-
-CREATE INDEX IF NOT EXISTS idx_incidents_state 
-    ON incidents(incident_state);
-
-CREATE INDEX IF NOT EXISTS idx_incidents_opened_at 
-    ON incidents(opened_at);
-
-CREATE INDEX IF NOT EXISTS idx_incidents_opened_at 
-    ON incidents(opened_at);
-
-CREATE INDEX IF NOT EXISTS idx_embeddings_hnsw
-    ON incident_embeddings
-    USING hnsw (embedding_vector vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
+CREATE INDEX IF NOT EXISTS idx_incidents_ticket_id    ON incidents(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_incidents_created_at   ON incidents(created_at);
+CREATE INDEX IF NOT EXISTS idx_incidents_issue_type   ON incidents(issue_type);
+CREATE INDEX IF NOT EXISTS idx_incidents_priority     ON incidents(priority);
+CREATE INDEX IF NOT EXISTS idx_incidents_status       ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_product_area ON incidents(product_area);
+CREATE INDEX IF NOT EXISTS idx_embeddings_incident_id ON incident_embeddings(incident_id);

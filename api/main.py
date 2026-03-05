@@ -14,7 +14,6 @@ app = Flask(__name__)
 CORS(app)
 
 
-# ── Health Check ─────────────────────────────────────────────────────────
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({
@@ -24,38 +23,35 @@ def health_check():
     })
 
 
-# ── RAG Endpoint ─────────────────────────────────────────────────────────
 @app.route('/api/rag', methods=['POST'])
 def rag_endpoint():
     """
     Full RAG pipeline endpoint
-    Request : { "query": "...", "category": "Software", "top_k": 5 }
-    Response: { similar_incidents, resolution_guidance, source, cached }
+    Request : { "query": "...", "category": "..." }
+    Response: { query, answer, source_incidents, confidence }
     """
     try:
-        from api.rag_service import rag_query
+        from api.rag_service import generate_rag_response
 
-        data          = request.get_json()
-        query_text    = data.get('query')
+        data           = request.get_json()
+        query_text     = data.get('query')
         query_category = data.get('category', None)
-        top_k         = data.get('top_k', 5)
 
         if not query_text:
             return jsonify({"error": "query field is required"}), 400
 
-        result = rag_query(query_text, query_category, top_k)
+        result = generate_rag_response(query_text, query_category)
         return jsonify(result), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ── Search Endpoint ───────────────────────────────────────────────────────
 @app.route('/api/search', methods=['POST'])
 def search_endpoint():
     """
     Similarity search only (no GPT-4)
-    Request : { "query": "...", "category": "Software", "top_k": 5 }
+    Request : { "query": "...", "category": "...", "top_k": 5 }
     Response: { total_candidates, results }
     """
     try:

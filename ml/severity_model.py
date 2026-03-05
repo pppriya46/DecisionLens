@@ -1,7 +1,3 @@
-# ml/severity_model.py
-# Purpose: Train a Random Forest classifier to predict incident priority
-# Saves trained model to ml/models/severity_rf_v1.pkl
-
 import os
 import joblib
 import psycopg2
@@ -22,7 +18,7 @@ from imblearn.over_sampling import SMOTE
 
 load_dotenv()
 
-# ── Config ─────────────────────────────────────────────────────────────
+
 MODEL_PATH = "ml/models/severity_rf_v1.pkl"
 ENCODER_PATH = "ml/models/label_encoders.pkl"
 
@@ -35,7 +31,6 @@ DB_CONFIG = {
 }
 
 
-# ── Step 1: Load data from database ────────────────────────────────────
 
 def load_data():
     """Load incidents from PostgreSQL for training."""
@@ -66,7 +61,7 @@ def load_data():
     return df
 
 
-# ── Step 2: Feature Engineering ────────────────────────────────────────
+
 
 def engineer_features(df):
     """
@@ -79,7 +74,7 @@ def engineer_features(df):
 
     df = df.copy()
 
-    # Extract time features from opened_at
+
     df['opened_at'] = pd.to_datetime(df['opened_at'], errors='coerce')
     df['hour_of_day'] = df['opened_at'].dt.hour.fillna(0).astype(int)
     df['day_of_week'] = df['opened_at'].dt.dayofweek.fillna(0).astype(int)
@@ -88,7 +83,7 @@ def engineer_features(df):
         (df['hour_of_day'] >= 9) & (df['hour_of_day'] <= 17)
     ).astype(int)
 
-    # Clean numeric columns
+
     df['reassignment_count'] = pd.to_numeric(
         df['reassignment_count'], errors='coerce'
     ).fillna(0).astype(int)
@@ -111,8 +106,6 @@ def engineer_features(df):
 
     return df
 
-
-# ── Step 3: Encode categorical features ────────────────────────────────
 
 def encode_features(df_train, df_test):
     """
@@ -184,8 +177,6 @@ def encode_features(df_train, df_test):
     return df_train, df_test, encoders
 
 
-# ── Step 4: Prepare features and target ────────────────────────────────
-
 def prepare_xy(df):
     """Select final features and target for training."""
 
@@ -219,7 +210,6 @@ def prepare_xy(df):
     return X, y, feature_cols
 
 
-# ── Step 5: Train the model ─────────────────────────────────────────────
 
 def train_model(X_train, y_train):
     """
@@ -253,7 +243,6 @@ def train_model(X_train, y_train):
     return model
 
 
-# ── Step 6: Evaluate the model ─────────────────────────────────────────
 
 def evaluate_model(model, X_test, y_test, encoders, feature_cols):
     """Evaluate model performance with multiple metrics."""
@@ -308,7 +297,6 @@ def evaluate_model(model, X_test, y_test, encoders, feature_cols):
     return accuracy
 
 
-# ── Step 7: Save the model ─────────────────────────────────────────────
 
 def save_model(model, encoders):
     """Save trained model and encoders to disk."""
@@ -321,7 +309,6 @@ def save_model(model, encoders):
     print(f"Encoders saved to: {ENCODER_PATH}")
 
 
-# ── Main Pipeline ──────────────────────────────────────────────────────
 
 def main():
     # Load data
