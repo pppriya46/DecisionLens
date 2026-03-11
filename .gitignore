@@ -32,6 +32,7 @@ docker-compose.override.yml
 
 # Data files (too large for git)
 data/*.csv
+data/old/
 data/data.csv
 data/incidents_cleaned.csv
 
@@ -41,3 +42,5 @@ logs/data/old/
 
 .coverage 
 htmlcov/.
+
+ml/models/
