@@ -44,3 +44,4 @@ logs/data/old/
 htmlcov/.
 
 ml/models/
+copy_changed_today.sh
