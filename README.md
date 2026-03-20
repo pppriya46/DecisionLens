@@ -1,116 +1,133 @@
-**DecisionLens**
+# DecisionLens
 
-**Problem**
-IT support teams often rely on manually searching through historical tickets to diagnose incidents.
-With thousands of past incidents, identifying relevant cases becomes slow and inconsistent, leading to delayed resolution times and repeated troubleshooting efforts.
+## What it does
 
-**Solution**
-DecisionLens uses semantic vector search and Retrieval-Augmented Generation (RAG) to surface relevant historical incidents and generate contextual troubleshooting guidance.
+DecisionLens is an incident resolution system that helps surface similar historical support cases
+and generate troubleshooting guidance for new incidents. It combines semantic search over past
+tickets with an LLM-assisted resolution flow so support teams can investigate issues faster and
+more consistently.
 
-**The system:**
-- converts incident descriptions into OpenAI embeddings
-- retrieves similar cases using pgvector similarity search
-- re-ranks results using operational signals such as resolution status and recency
-- generates troubleshooting guidance using GPT-4
-- This approach reduces manual investigation and improves incident resolution efficiency.
+## Why I built this
 
-**Key Metrics:**
-- <50ms vector search
-- 0.73+ similarity scores  
-- 100,000 incidents indexed
-- 2-3s AI response time
+I built this project to explore how retrieval, reranking, and LLM-based generation can work
+together in a practical support workflow. I also wanted to turn a simple semantic-search idea
+into a more complete system with measurable performance, evaluation, and deployment setup.
 
-## Tech Stack
+## How it works
 
-- **Backend:** FastAPI
-- **Database:** PostgreSQL + pgvector
-- **Embeddings:** OpenAI text-embedding-3-small (1536D)
-- **LLM:** GPT-4
-- **Deployment:** Docker Compose
-
-## Quick Start
-
-### Prerequisites
-- Docker & Docker Compose
-- Python 3.11+
-- OpenAI API key
-  
-### Test APIs
-
-```bash
-# Search for similar incidents
-curl -X POST http://localhost:5000/api/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "cannot login to account", "category": "account_access"}'
-
-# Get AI-generated resolution
-curl -X POST http://localhost:5000/api/rag \
-  -H "Content-Type: application/json" \
-  -d '{"query": "cannot login to account", "category": "account_access"}'
-```
+- API layer: FastAPI exposes endpoints for incident creation, retrieval, similarity search,
+  resolution generation, health checks, and ML status reporting.
+- Database: PostgreSQL stores incidents, embeddings, and model-related metadata, with pgvector
+  IVFFlat indexing used for semantic retrieval.
+- Processing logic: incident text is embedded with OpenAI, similar resolved incidents are fetched
+  with pgvector cosine search, results are reranked using operational signals like priority,
+  status, and recency, and GPT-4 generates troubleshooting guidance from the top matches.
 
 ## Architecture
 
+```text
+Incident data
+    |
+    v
+PostgreSQL + pgvector
+    |
+    +--> incident records
+    +--> stored embedding vectors
+    |
+    v
+FastAPI API
+    |
+    +--> create incident
+    +--> fetch incident
+    +--> search similar incidents
+    +--> generate resolution
+    |
+    v
+Retrieval pipeline
+    |
+    +--> OpenAI embeddings
+    +--> pgvector similarity search
+    +--> priority/status/recency reranking
+    |
+    v
+GPT-4 resolution generation
+    |
+    v
+API response + stored resolution
 ```
-User Query
-    ↓
-OpenAI Embedding (1536D vector)
-    ↓
-pgvector Search (cosine similarity, top 20)
-    ↓
-Re-Rank (similarity 60% + status 25% + recency 15%)
-    ↓
-GPT-4 (top 5 incidents as context)
-    ↓
-Response with troubleshooting steps
+
+## Run locally
+
+### Option 1: Docker
+
+Start the app stack:
+
+```bash
+docker compose up --build
 ```
 
-## Project Structure
+Available services:
 
-```
-DecisionLens/
-├── api/                    # FastAPI application
-│   ├── main.py            # Endpoints
-│   ├── search_service.py  # Vector search
-│   └── rag_service.py     # RAG pipeline
-├── ml/                    # ML services
-│   └── embedding_service.py
-├── data/                  # ETL pipeline
-│   ├── clean_incidents.py
-│   └── load_incidents.py
-├── db/                    # Database
-│   └── schema.sql
-└── docker-compose-dev.yml
+- Frontend: `http://localhost:3000`
+- API: `http://localhost:5000`
+- API docs: `http://localhost:5000/docs`
+
+On a fresh Docker volume, PostgreSQL initializes the schema automatically from
+[db/schema.sql](/Users/priya/Desktop/Projects/DecisionLens/db/schema.sql).
+
+If you want to reset the stack:
+
+```bash
+docker compose down -v
+docker compose up --build
 ```
 
-## Key Features
+If you want to load the incident dataset:
 
-**Vector Search**
-- IVFFlat indexing for fast retrieval
-- Cosine similarity matching
-- Batch processing (100 incidents/request)
+```bash
+docker compose run --rm api python data/load_incidents.py
+```
 
-**RAG Pipeline**
-- Query enrichment for better context
-- Multi-factor re-ranking algorithm
-- Source attribution with confidence scores
+If you want to generate embeddings:
 
-**Data Processing**
-- ETL pipeline for 100k+ incidents
-- Duplicate detection and cleaning
-- Automated embedding generation
+```bash
+docker compose run --rm api python ml/embedding_service.py
+```
 
-## Performance
+### Option 2: Manual
 
-| Metric | Value |
-|--------|-------|
-| Search Latency | <50ms |
-| Similarity Score | 0.73+ |
-| Top-5 Accuracy | 80%+ |
-| Resolution Time Saved | 40% |
+Start PostgreSQL first, then run:
 
-**Technical Highlights**
-- Resolved cosine vs L2 distance mismatch improving similarity scores 0.62 → 0.73
-- Query enrichment improving retrieval relevance ~5%
-- Multi-signal ranking for actionable incident retrieval
-- Batch embedding generation to reduce API cost
+```bash
+source venv/bin/activate
+uvicorn api.main:app --reload --host 0.0.0.0 --port 5000
+```
+
+For the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## What I Learned
+
+- Instrumentation matters. Adding latency breakdowns made it much easier to identify the real
+  bottlenecks instead of guessing.
+- Retrieval quality is not just about raw vector similarity. Reranking with operational signals
+  made the results more useful without materially hurting semantic relevance.
+- End-to-end performance depends on the full pipeline. Once retrieval became fast, the main
+  latency bottleneck shifted to prompt size and LLM response time.
+- Clean deployment and reproducibility are part of the project quality, not just the model logic.
+
+## Future improvements
+
+- Scaling: add stronger bulk-ingestion and background job orchestration for larger datasets and
+  higher request volume.
+- Monitoring: add richer production-style observability for latency, error tracking, and model
+  usage over time.
+- Retrieval quality: expand the evaluation set and improve relevance labeling beyond the current
+  labeled benchmark set.
+- Resolution generation: test faster model options and selective caching for lower end-to-end
+  latency.

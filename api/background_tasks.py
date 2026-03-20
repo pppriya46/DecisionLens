@@ -10,6 +10,7 @@ from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
 from api.dependencies import get_db_connection_context
+from api.telemetry import emit_latency, now_ms, elapsed_ms
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -35,10 +36,12 @@ def generate_embedding_task(incident_id: int):
     Called after POST /incidents to avoid blocking the response
     """
     print(f"[Background] Generating embedding for incident {incident_id}")
+    task_start_ms = now_ms()
     
     try:
         with get_db_connection_context() as conn:
             # Fetch incident data
+            fetch_start_ms = now_ms()
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("""
                     SELECT id, initial_message, issue_type, product_area, 
@@ -47,20 +50,34 @@ def generate_embedding_task(incident_id: int):
                     WHERE id = %s
                 """, (incident_id,))
                 incident = cur.fetchone()
+            fetch_duration_ms = elapsed_ms(fetch_start_ms)
             
             if not incident:
                 print(f"[Background] Incident {incident_id} not found")
+                emit_latency(
+                    "embedding_generation",
+                    component="background_embedding_task",
+                    incident_id=incident_id,
+                    fetch_duration_ms=fetch_duration_ms,
+                    embed_duration_ms=0,
+                    store_duration_ms=0,
+                    duration_ms=elapsed_ms(task_start_ms),
+                    status="not_found",
+                )
                 return
             
             # Build text and generate embedding
             text = build_incident_text(incident)
+            embed_start_ms = now_ms()
             response = client.embeddings.create(
                 model=EMBEDDING_MODEL,
                 input=text
             )
             embedding = response.data[0].embedding
+            embed_duration_ms = elapsed_ms(embed_start_ms)
             
             # Store embedding
+            store_start_ms = now_ms()
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO incident_embeddings (incident_id, embedding_vector)
@@ -68,11 +85,30 @@ def generate_embedding_task(incident_id: int):
                     ON CONFLICT DO NOTHING
                 """, (incident_id, str(embedding)))
                 conn.commit()
+            store_duration_ms = elapsed_ms(store_start_ms)
             
             print(f"[Background] ✓ Embedding stored for incident {incident_id}")
+            emit_latency(
+                "embedding_generation",
+                component="background_embedding_task",
+                incident_id=incident_id,
+                fetch_duration_ms=fetch_duration_ms,
+                embed_duration_ms=embed_duration_ms,
+                store_duration_ms=store_duration_ms,
+                duration_ms=elapsed_ms(task_start_ms),
+                status="success",
+            )
     
     except Exception as e:
         print(f"[Background] ✗ Error generating embedding for incident {incident_id}: {e}")
+        emit_latency(
+            "embedding_generation",
+            component="background_embedding_task",
+            incident_id=incident_id,
+            duration_ms=elapsed_ms(task_start_ms),
+            status="error",
+            error=str(e),
+        )
 
 
 def retrain_severity_model_task(job_id: str, min_samples: int = 1000):

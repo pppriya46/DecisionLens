@@ -7,6 +7,7 @@ __pycache__/
 venv/
 env/
 ENV/
+.pytest_cache/
 
 # Environment variables
 .env
@@ -29,6 +30,10 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+node_modules/
+dist/
+frontend/node_modules/
+frontend/dist/
 
 # Data files (too large for git)
 data/*.csv
@@ -40,8 +45,9 @@ data/incidents_cleaned.csv
 *.log
 logs/data/old/
 
-.coverage 
-htmlcov/.
+.coverage
+.coverage.*
+htmlcov/
 
 ml/models/
 copy_changed_today.sh

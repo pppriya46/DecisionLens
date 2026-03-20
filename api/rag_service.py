@@ -2,61 +2,96 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 from api.search_service import search_similar_incidents
+from api.telemetry import emit_latency, now_ms, elapsed_ms
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def generate_rag_response(query_text: str, query_category: str = None) -> dict:
+RAG_SOURCE_COUNT = 3
+MAX_CONTEXT_DESCRIPTION_CHARS = 160
+MAX_CONTEXT_RESOLUTION_CHARS = 240
+
+
+def truncate_text(value: str, limit: int) -> str:
+    if not value:
+        return ""
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3].rstrip() + "..."
+
+def generate_rag_response(query_text: str, query_category: str = None, query_embedding=None) -> dict:
     print(f"\n[RAG] Query: {query_text[:80]}...")
+    request_start_ms = now_ms()
 
 
     search_results = search_similar_incidents(
         query_text=query_text,
         query_category=query_category,
+        query_embedding=query_embedding,
         top_k=20,
-        top_n=5
+        top_n=RAG_SOURCE_COUNT
     )
+    retrieval_duration_ms = search_results.get('timings_ms', {}).get('total')
 
     if not search_results['results']:
+        total_duration_ms = elapsed_ms(request_start_ms)
+        emit_latency(
+            "rag_request",
+            component="generate_rag_response",
+            query_category=query_category,
+            source_count=0,
+            retrieval_duration_ms=retrieval_duration_ms,
+            llm_duration_ms=0,
+            embedding_source=search_results.get('embedding_source'),
+            duration_ms=total_duration_ms,
+        )
         return {
             "query": query_text,
             "answer": "I couldn't find any similar incidents in our database. Please provide more details or contact support directly.",
             "source_incidents": [],
-            "confidence": "low"
+            "confidence": "low",
+            "timings_ms": {
+                "retrieval": retrieval_duration_ms,
+                "llm": 0,
+                "total": total_duration_ms,
+            },
+            "embedding_source": search_results.get('embedding_source'),
         }
 
    
     context_parts = []
     for i, inc in enumerate(search_results['results'], 1):
+        short_description = truncate_text(inc['description'], MAX_CONTEXT_DESCRIPTION_CHARS)
+        short_resolution = truncate_text(inc['resolution'] or "", MAX_CONTEXT_RESOLUTION_CHARS)
         context_parts.append(
-            f"Incident {i}:\n"
-            f"Issue: {inc['description']}\n"
-            f"Type: {inc['issue_type']} | Product: {inc['product_area']}\n"
-            f"Priority: {inc['priority']} | Status: {inc['status']}\n"
-            f"Resolution: {inc['resolution']}\n"
-            f"Customer Sentiment: {inc['sentiment']} | CSAT: {inc['csat_score']}\n"
+            f"Incident {i}\n"
+            f"Issue: {short_description}\n"
+            f"Type: {inc['issue_type'] or 'unknown'} | Product: {inc['product_area'] or 'unknown'}\n"
+            f"Status: {inc['status'] or 'unknown'}\n"
+            f"Resolution: {short_resolution or 'No resolution recorded.'}"
         )
 
     context = "\n---\n".join(context_parts)
 
 
-    system_prompt = """You are an IT support assistant. Based on similar past incidents, provide helpful troubleshooting advice.
+    system_prompt = (
+        "You are an IT support assistant. Use the similar incidents to produce concise, "
+        "actionable troubleshooting steps. Highlight the most repeated fix pattern and note "
+        "when escalation may be needed."
+    )
 
-Instructions:
-1. Analyze the similar incidents provided
-2. Give step-by-step troubleshooting advice
-3. Mention if escalation might be needed
-4. Be concise and actionable
-5. If multiple incidents show similar resolutions, highlight that pattern"""
+    user_prompt = f"""User query: {query_text}
 
-    user_prompt = f"""User Query: {query_text}
-
-Similar Past Incidents:
+Similar incidents:
 {context}
 
-Based on these similar incidents, what troubleshooting steps or solution would you recommend?"""
+Return:
+- 3 to 5 concrete troubleshooting steps
+- 1 short escalation note if needed
+- Keep the answer concise"""
 
     print("[RAG] Calling GPT-4...")
+    llm_start_ms = now_ms()
     completion = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -65,6 +100,14 @@ Based on these similar incidents, what troubleshooting steps or solution would y
         ],
         temperature=0.7,
         max_tokens=500
+    )
+    llm_duration_ms = elapsed_ms(llm_start_ms)
+    emit_latency(
+        "llm_response",
+        component="rag_generation",
+        model="gpt-4",
+        source_count=len(search_results['results']),
+        duration_ms=llm_duration_ms,
     )
 
     answer = completion.choices[0].message.content
@@ -77,6 +120,18 @@ Based on these similar incidents, what troubleshooting steps or solution would y
         confidence = "medium"
     else:
         confidence = "low"
+
+    total_duration_ms = elapsed_ms(request_start_ms)
+    emit_latency(
+        "rag_request",
+        component="generate_rag_response",
+        query_category=query_category,
+        source_count=len(search_results['results']),
+        retrieval_duration_ms=retrieval_duration_ms,
+        llm_duration_ms=llm_duration_ms,
+        embedding_source=search_results.get('embedding_source'),
+        duration_ms=total_duration_ms,
+    )
 
     return {
         "query": query_text,
@@ -93,7 +148,13 @@ Based on these similar incidents, what troubleshooting steps or solution would y
             for inc in search_results['results']
         ],
         "confidence": confidence,
-        "avg_similarity": round(avg_similarity, 3)
+        "avg_similarity": round(avg_similarity, 3),
+        "timings_ms": {
+            "retrieval": retrieval_duration_ms,
+            "llm": llm_duration_ms,
+            "total": total_duration_ms,
+        },
+        "embedding_source": search_results.get('embedding_source'),
     }
 
 

@@ -46,3 +46,13 @@ CREATE INDEX IF NOT EXISTS idx_incidents_priority     ON incidents(priority);
 CREATE INDEX IF NOT EXISTS idx_incidents_status       ON incidents(status);
 CREATE INDEX IF NOT EXISTS idx_incidents_product_area ON incidents(product_area);
 CREATE INDEX IF NOT EXISTS idx_embeddings_incident_id ON incident_embeddings(incident_id);
+
+-- Cosine-distance ANN index for semantic search.
+-- `lists = 100` is a reasonable starting point for the current ~100k-row corpus.
+CREATE INDEX IF NOT EXISTS idx_embeddings_vector
+ON incident_embeddings
+USING ivfflat (embedding_vector vector_cosine_ops)
+WITH (lists = 100);
+
+-- Refresh planner statistics after bulk loads or index creation.
+ANALYZE incident_embeddings;

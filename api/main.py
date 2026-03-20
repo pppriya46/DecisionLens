@@ -8,21 +8,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import os
-import joblib
 import psycopg2
 import psycopg2.extras
 import uuid
 from dotenv import load_dotenv
+from api.telemetry import emit_latency, now_ms, elapsed_ms
 
 # Import models and dependencies
 from api.models import (
     CreateIncidentRequest, CreateIncidentResponse,
-    SearchIncidentsRequest, SimilarIncidentsResponse,
+    SimilarIncidentsResponse,
     ResolveIncidentRequest, ResolveIncidentResponse,
     GetIncidentResponse, HealthCheckResponse,
     MLStatusResponse, RetrainModelRequest, RetrainResponse,
     IncidentDetail, SeverityPrediction, SimilarIncident,
-    DatabaseHealth, ModelHealth, ErrorResponse
+    DatabaseHealth, ModelHealth
 )
 from api.dependencies import get_db_connection, verify_openai_key, get_model_path
 from api.background_tasks import generate_embedding_task, retrain_severity_model_task
@@ -34,10 +34,16 @@ from ml.predict_severity import predict_severity
 
 load_dotenv()
 
-# Global model variables
-severity_model    = None
-severity_encoders = None
-severity_tfidf    = None
+
+def get_stored_incident_embedding(conn, incident_id: int):
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT embedding_vector::text
+            FROM incident_embeddings
+            WHERE incident_id = %s
+        """, (incident_id,))
+        row = cur.fetchone()
+    return row[0] if row else None
 
 # ==================== APP INITIALIZATION ====================
 
@@ -201,9 +207,11 @@ async def get_incident(
         similar_incidents = []
         if include_similar and incident_data.get('initial_message'):
             try:
+                stored_embedding = get_stored_incident_embedding(conn, incident_id)
                 search_result = search_similar_incidents(
                     query_text=incident_data['initial_message'],
                     query_category=incident_data.get('issue_type'),
+                    query_embedding=stored_embedding,
                     top_k=20,
                     top_n=5
                 )
@@ -237,13 +245,19 @@ async def get_similar_incidents(
     top_n: int = 5,
     conn=Depends(get_db_connection)
 ):
+    request_start_ms = now_ms()
+    status_label = "success"
+    search_timings = {}
     if top_k < 5 or top_k > 100:
+        status_label = "validation_error"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="top_k must be between 5 and 100")
     
     if top_n < 1 or top_n > 20:
+        status_label = "validation_error"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="top_n must be between 1 and 20")
     
     try:
+        stored_embedding = None
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT id, initial_message, issue_type
@@ -257,13 +271,16 @@ async def get_similar_incidents(
             
             if not incident['initial_message']:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incident has no message to search with")
+        stored_embedding = get_stored_incident_embedding(conn, incident_id)
         
         search_result = search_similar_incidents(
             query_text=incident['initial_message'],
             query_category=incident.get('issue_type'),
+            query_embedding=stored_embedding,
             top_k=top_k,
             top_n=top_n
         )
+        search_timings = search_result.get('timings_ms', {})
         
         similar = [SimilarIncident(**inc) for inc in search_result['results']]
         
@@ -275,9 +292,23 @@ async def get_similar_incidents(
         )
     
     except HTTPException:
+        status_label = "http_error"
         raise
     except Exception as e:
+        status_label = "error"
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error searching similar incidents: {str(e)}")
+    finally:
+        emit_latency(
+            "api_request",
+            endpoint="/incidents/{incident_id}/similar",
+            incident_id=incident_id,
+            top_k=top_k,
+            top_n=top_n,
+            status=status_label,
+            embedding_source=search_result.get('embedding_source') if 'search_result' in locals() else None,
+            search_timings_ms=search_timings,
+            duration_ms=elapsed_ms(request_start_ms),
+        )
 
 
 # ==================== ENDPOINT 4: RESOLVE INCIDENT WITH RAG ====================
@@ -288,7 +319,11 @@ async def resolve_incident(
     request: ResolveIncidentRequest = ResolveIncidentRequest(),
     conn=Depends(get_db_connection)
 ):
+    request_start_ms = now_ms()
+    status_label = "success"
+    rag_timings = {}
     try:
+        stored_embedding = None
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
                 SELECT id, ticket_id, initial_message, issue_type, 
@@ -306,11 +341,14 @@ async def resolve_incident(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Incident already has a resolution. Use force_regenerate=true to override."
                 )
+        stored_embedding = get_stored_incident_embedding(conn, incident_id)
         
         rag_result = generate_rag_response(
             query_text=incident['initial_message'],
-            query_category=request.category or incident.get('issue_type')
+            query_category=request.category or incident.get('issue_type'),
+            query_embedding=stored_embedding,
         )
+        rag_timings = rag_result.get('timings_ms', {})
         
         with conn.cursor() as cur:
             cur.execute("""
@@ -331,10 +369,24 @@ async def resolve_incident(
         )
     
     except HTTPException:
+        status_label = "http_error"
         raise
     except Exception as e:
+        status_label = "error"
         conn.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error resolving incident: {str(e)}")
+    finally:
+        emit_latency(
+            "api_request",
+            endpoint="/incidents/{incident_id}/resolve",
+            incident_id=incident_id,
+            force_regenerate=request.force_regenerate,
+            requested_category=request.category,
+            status=status_label,
+            embedding_source=rag_result.get('embedding_source') if 'rag_result' in locals() else None,
+            rag_timings_ms=rag_timings,
+            duration_ms=elapsed_ms(request_start_ms),
+        )
 
 
 # ==================== ENDPOINT 5: HEALTH CHECK ====================
@@ -503,23 +555,16 @@ async def root():
 
 @app.on_event("startup")
 async def startup_event():
-    global severity_model, severity_encoders, severity_tfidf
     print("\n" + "="*60)
     print("DecisionLens FastAPI v2.0.0")
     print("="*60)
     print("✓ Application started")
-
     try:
-        model_path   = os.getenv("SEVERITY_MODEL_PATH", "ml/models/severity_rf_v1.pkl")
-        encoder_path = os.getenv("ENCODER_PATH", "ml/models/label_encoders.pkl")
-        tfidf_path   = os.getenv("TFIDF_PATH", "ml/models/tfidf_vectorizer.pkl")
-
-        severity_model    = joblib.load(model_path)
-        severity_encoders = joblib.load(encoder_path)
-        severity_tfidf    = joblib.load(tfidf_path)
-        print(f"✓ Severity model loaded from {model_path}")
+        model_path = os.getenv("SEVERITY_MODEL_PATH", "ml/models/severity_rf_v1.pkl")
+        get_model_path("severity")
+        print(f"✓ Severity model available at {model_path}")
     except Exception as e:
-        print(f"✗ Failed to load severity model: {e}")
+        print(f"✗ Failed to verify severity model: {e}")
 
     print("✓ Endpoints: 7 RESTful routes available")
     print("✓ Documentation: http://localhost:5000/docs")

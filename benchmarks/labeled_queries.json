@@ -1,0 +1,130 @@
+[
+  {
+    "query": "I downgraded my plan but I am still being billed for the higher tier.",
+    "query_category": "billing_problem",
+    "expected_issue_type": "billing_problem",
+    "expected_product_area": "api_integration",
+    "relevant_ticket_ids": [
+      "TCKT_000008",
+      "TCKT_000174",
+      "TCKT_000347",
+      "TCKT_000476",
+      "TCKT_001522",
+      "TCKT_002103",
+      "TCKT_002113",
+      "TCKT_002465"
+    ]
+  },
+  {
+    "query": "Overall performance has degraded in the last few days.",
+    "query_category": "performance",
+    "expected_issue_type": "performance",
+    "expected_product_area": "login_auth",
+    "relevant_ticket_ids": [
+      "TCKT_000010",
+      "TCKT_000220",
+      "TCKT_001004",
+      "TCKT_001046",
+      "TCKT_001071",
+      "TCKT_001075",
+      "TCKT_001144",
+      "TCKT_001281"
+    ]
+  },
+  {
+    "query": "How can I export my data from the api integration section?",
+    "query_category": "how_to",
+    "expected_issue_type": "how_to",
+    "expected_product_area": "api_integration",
+    "relevant_ticket_ids": [
+      "TCKT_000480",
+      "TCKT_000568",
+      "TCKT_000727",
+      "TCKT_001365",
+      "TCKT_001653",
+      "TCKT_001735",
+      "TCKT_001953",
+      "TCKT_002150"
+    ]
+  },
+  {
+    "query": "The data export feature is not saving my changes.",
+    "query_category": "bug",
+    "expected_issue_type": "bug",
+    "expected_product_area": "data_export",
+    "relevant_ticket_ids": [
+      "TCKT_000592",
+      "TCKT_000702",
+      "TCKT_001053",
+      "TCKT_001176",
+      "TCKT_001423",
+      "TCKT_001546",
+      "TCKT_001661",
+      "TCKT_001913"
+    ]
+  },
+  {
+    "query": "I need help setting up notifications for my team.",
+    "query_category": "how_to",
+    "expected_issue_type": "how_to",
+    "expected_product_area": "notifications",
+    "relevant_ticket_ids": [
+      "TCKT_000144",
+      "TCKT_000279",
+      "TCKT_000289",
+      "TCKT_001256",
+      "TCKT_001279",
+      "TCKT_001424",
+      "TCKT_001452",
+      "TCKT_002467"
+    ]
+  },
+  {
+    "query": "Queries in the notifications module are timing out.",
+    "query_category": "performance",
+    "expected_issue_type": "performance",
+    "expected_product_area": "notifications",
+    "relevant_ticket_ids": [
+      "TCKT_000366",
+      "TCKT_000451",
+      "TCKT_000664",
+      "TCKT_000671",
+      "TCKT_000952",
+      "TCKT_001459",
+      "TCKT_002135",
+      "TCKT_002518"
+    ]
+  },
+  {
+    "query": "My account was locked after multiple failed login attempts.",
+    "query_category": "account_access",
+    "expected_issue_type": "account_access",
+    "expected_product_area": "login_auth",
+    "relevant_ticket_ids": [
+      "TCKT_000026",
+      "TCKT_000052",
+      "TCKT_000278",
+      "TCKT_001249",
+      "TCKT_001252",
+      "TCKT_001277",
+      "TCKT_001355",
+      "TCKT_001654"
+    ]
+  },
+  {
+    "query": "We need details about your data encryption and compliance.",
+    "query_category": "security_concern",
+    "expected_issue_type": "security_concern",
+    "expected_product_area": "login_auth",
+    "relevant_ticket_ids": [
+      "TCKT_000108",
+      "TCKT_000121",
+      "TCKT_000162",
+      "TCKT_000205",
+      "TCKT_000516",
+      "TCKT_000884",
+      "TCKT_001125",
+      "TCKT_001188"
+    ]
+  }
+]

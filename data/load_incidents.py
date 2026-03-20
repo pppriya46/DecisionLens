@@ -18,11 +18,19 @@ DB_CONFIG = {
 
 def load_incidents():
     print(f"Loading CSV from: {CSV_PATH}")
-    df = pd.read_csv(CSV_PATH)
-    print(f"Rows to load: {len(df)}")
-
     conn = psycopg2.connect(**DB_CONFIG)
     cur  = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM incidents")
+    existing_count = cur.fetchone()[0]
+    if existing_count > 0:
+        print(f"Incidents table already has {existing_count} rows. Skipping CSV load.")
+        cur.close()
+        conn.close()
+        return
+
+    df = pd.read_csv(CSV_PATH)
+    print(f"Rows to load: {len(df)}")
 
     inserted = 0
     skipped  = 0

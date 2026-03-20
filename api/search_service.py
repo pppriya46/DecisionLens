@@ -4,6 +4,7 @@ import psycopg2.extras
 from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
+from api.telemetry import emit_latency, now_ms, elapsed_ms
 
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -17,12 +18,20 @@ DB_CONFIG = {
 }
 
 EMBEDDING_MODEL = "text-embedding-3-small"
+PRIORITY_WEIGHTS = {
+    "critical": 1.0,
+    "urgent": 0.9,
+    "high": 0.75,
+    "medium": 0.55,
+    "low": 0.35,
+}
 
 def get_db_connection():
     return psycopg2.connect(**DB_CONFIG)
 
 
 def generate_query_embedding(query_text: str):
+    start_ms = now_ms()
     enriched_query = (
         f"User problem: {query_text}. "
         f"Looking for similar technical support issues, their solutions, and troubleshooting steps."
@@ -32,11 +41,30 @@ def generate_query_embedding(query_text: str):
         model=EMBEDDING_MODEL,
         input=enriched_query
     )
+    emit_latency(
+        "embedding_generation",
+        component="search_query_embedding",
+        model=EMBEDDING_MODEL,
+        query_length=len(query_text),
+        duration_ms=elapsed_ms(start_ms),
+    )
     return response.data[0].embedding
 
 
+def normalize_query_embedding(query_embedding):
+    if isinstance(query_embedding, str):
+        return query_embedding
+    return str(query_embedding)
+
+
+def score_priority(priority: str | None) -> float:
+    normalized = (priority or "").strip().lower()
+    return PRIORITY_WEIGHTS.get(normalized, 0.2)
+
+
 def query_similar_incidents(conn, query_embedding, top_k=20):
-    embedding_str = str(query_embedding)
+    start_ms = now_ms()
+    embedding_str = normalize_query_embedding(query_embedding)
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
@@ -62,10 +90,20 @@ def query_similar_incidents(conn, query_embedding, top_k=20):
             LIMIT %s
         """, (embedding_str, embedding_str, top_k))
 
-        return cur.fetchall()
+        results = cur.fetchall()
+
+    emit_latency(
+        "vector_search",
+        component="pgvector_similarity_search",
+        top_k=top_k,
+        candidates_returned=len(results),
+        duration_ms=elapsed_ms(start_ms),
+    )
+    return results
 
 
 def rerank_incidents(incidents, query_category=None, top_n=5):
+    start_ms = now_ms()
     now = datetime.now()
     scored = []
 
@@ -89,10 +127,13 @@ def rerank_incidents(incidents, query_category=None, top_n=5):
         else:
             recency_score = 0.1
 
+        priority_score = score_priority(incident.get('priority'))
+
         final_score = (
-            base_score    * 0.60 +
-            status_score  * 0.25 +
-            recency_score * 0.15
+            base_score     * 0.50 +
+            status_score   * 0.20 +
+            recency_score  * 0.10 +
+            priority_score * 0.20
         )
 
         scored.append({
@@ -112,48 +153,127 @@ def rerank_incidents(incidents, query_category=None, top_n=5):
                 "similarity": round(base_score, 4),
                 "status":     round(status_score, 4),
                 "recency":    round(recency_score, 4),
+                "priority":   round(priority_score, 4),
             }
         })
 
     scored.sort(key=lambda x: x['scores']['final'], reverse=True)
-    return scored[:top_n]
+    ranked = scored[:top_n]
+    emit_latency(
+        "rerank",
+        component="incident_reranking",
+        input_count=len(incidents),
+        output_count=len(ranked),
+        query_category=query_category,
+        duration_ms=elapsed_ms(start_ms),
+    )
+    return ranked
 
 
 def search_similar_incidents(
     query_text: str,
     query_category: str = None,
+    query_embedding=None,
     top_k: int = 20,
     top_n: int = 5
 ) -> dict:
     print(f"\nSearch query: {query_text[:80]}...")
+    request_start_ms = now_ms()
 
     conn = get_db_connection()
 
     try:
-        print("Generating enriched query embedding...")
-        query_embedding = generate_query_embedding(query_text)
+        embedding_start_ms = now_ms()
+        if query_embedding is None:
+            print("Generating enriched query embedding...")
+            query_embedding = generate_query_embedding(query_text)
+            embedding_duration_ms = elapsed_ms(embedding_start_ms)
+            embedding_source = "generated"
+        else:
+            print("Reusing stored incident embedding...")
+            embedding_duration_ms = elapsed_ms(embedding_start_ms)
+            embedding_source = "stored"
+            emit_latency(
+                "embedding_generation",
+                component="search_query_embedding",
+                model="stored_incident_embedding",
+                query_length=len(query_text),
+                duration_ms=embedding_duration_ms,
+                source=embedding_source,
+            )
 
         print(f"Querying pgvector for top {top_k} candidates...")
+        vector_search_start_ms = now_ms()
         raw_results = query_similar_incidents(conn, query_embedding, top_k)
+        vector_search_duration_ms = elapsed_ms(vector_search_start_ms)
         print(f"Found {len(raw_results)} raw candidates")
 
         if not raw_results:
+            total_duration_ms = elapsed_ms(request_start_ms)
+            emit_latency(
+                "search_request",
+                component="search_similar_incidents",
+                query_category=query_category,
+                top_k=top_k,
+                top_n=top_n,
+                total_candidates=0,
+                returned_results=0,
+                timings_ms={
+                    "embedding": embedding_duration_ms,
+                    "vector_search": vector_search_duration_ms,
+                    "rerank": 0,
+                    "total": total_duration_ms,
+                },
+                embedding_source=embedding_source,
+                duration_ms=total_duration_ms,
+            )
             return {
                 "query":            query_text,
                 "total_candidates": 0,
                 "results":          [],
-                "message":          "No similar incidents found"
+                "message":          "No similar incidents found",
+                "timings_ms": {
+                    "embedding": embedding_duration_ms,
+                    "vector_search": vector_search_duration_ms,
+                    "rerank": 0,
+                    "total": total_duration_ms,
+                },
+                "embedding_source": embedding_source,
             }
 
         print("Re-ranking by status and recency...")
+        rerank_start_ms = now_ms()
         ranked_results = rerank_incidents(raw_results, query_category, top_n)
+        rerank_duration_ms = elapsed_ms(rerank_start_ms)
         print(f"Returning top {len(ranked_results)} results")
+
+        total_duration_ms = elapsed_ms(request_start_ms)
+        timings_ms = {
+            "embedding": embedding_duration_ms,
+            "vector_search": vector_search_duration_ms,
+            "rerank": rerank_duration_ms,
+            "total": total_duration_ms,
+        }
+        emit_latency(
+            "search_request",
+            component="search_similar_incidents",
+            query_category=query_category,
+            top_k=top_k,
+            top_n=top_n,
+            total_candidates=len(raw_results),
+            returned_results=len(ranked_results),
+            timings_ms=timings_ms,
+            embedding_source=embedding_source,
+            duration_ms=total_duration_ms,
+        )
 
         return {
             "query":          query_text,
             "query_category": query_category,
             "total_candidates": len(raw_results),
             "results":        ranked_results,
+            "timings_ms":     timings_ms,
+            "embedding_source": embedding_source,
         }
 
     finally:

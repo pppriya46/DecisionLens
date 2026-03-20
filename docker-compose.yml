@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    container_name: decisionlens_postgres
+    environment:
+      POSTGRES_DB: decisionlens_db
+      POSTGRES_USER: decisionlens
+      POSTGRES_PASSWORD: decisionlens123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U decisionlens -d decisionlens_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: decisionlens_api
+    environment:
+      PORT: 5000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: decisionlens_db
+      DB_USER: decisionlens
+      DB_PASSWORD: decisionlens123
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SEVERITY_MODEL_PATH: ml/models/severity_rf_v1.pkl
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:5000
+    container_name: decisionlens_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
