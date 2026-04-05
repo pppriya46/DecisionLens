@@ -30,7 +30,6 @@ services:
       - DB_USER=decisionlens
       - DB_PASSWORD=decisionlens123
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - SEVERITY_MODEL_PATH=ml/models/severity_rf_v1.pkl
     ports:
       - "5000:5000"
     depends_on:

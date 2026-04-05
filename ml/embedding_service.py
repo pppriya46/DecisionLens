@@ -21,6 +21,20 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 BATCH_SIZE = 100  # how many incidents to embed at once
 
 
+def normalize_support_text(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = str(text).lower().strip()
+    normalized = normalized.replace("can't", "cannot")
+    normalized = normalized.replace("unable to", "cannot")
+    normalized = normalized.replace("not able to", "cannot")
+    normalized = normalized.replace("log in", "login")
+    normalized = normalized.replace("sign in", "login")
+    normalized = normalized.replace("password reset", "reset password")
+    normalized = " ".join(normalized.split())
+    return normalized
+
+
 def get_db_connection():
     """Create and return a database connection."""
     return psycopg2.connect(**DB_CONFIG)
@@ -31,12 +45,12 @@ def build_incident_text(incident):
     Use real text fields for much better embeddings!
     """
     parts = [
-        f"Issue: {incident['initial_message'] or 'unknown'}",
-        f"Type: {incident['issue_type'] or 'unknown'}",
-        f"Product Area: {incident['product_area'] or 'unknown'}",
+        f"Issue: {normalize_support_text(incident['initial_message']) or 'unknown'}",
+        f"Type: {normalize_support_text(incident['issue_type']) or 'unknown'}",
+        f"Product Area: {normalize_support_text(incident['product_area']) or 'unknown'}",
         f"Priority: {incident['priority'] or 'unknown'}",
-        f"Resolution: {incident['resolution_summary'] or 'unknown'}",
-        f"Platform: {incident['platform'] or 'unknown'}",
+        f"Resolution: {normalize_support_text(incident['resolution_summary']) or 'unknown'}",
+        f"Platform: {normalize_support_text(incident['platform']) or 'unknown'}",
     ]
     return " | ".join(parts)
 

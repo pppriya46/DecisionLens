@@ -1,12 +1,10 @@
 """
 Background Tasks for FastAPI
-Async operations (embedding generation, model retraining)
+Async operations for embedding generation
 """
 
 import os
-import time
 import psycopg2.extras
-from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
 from api.dependencies import get_db_connection_context
@@ -18,14 +16,28 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 
+def normalize_support_text(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = str(text).lower().strip()
+    normalized = normalized.replace("can't", "cannot")
+    normalized = normalized.replace("unable to", "cannot")
+    normalized = normalized.replace("not able to", "cannot")
+    normalized = normalized.replace("log in", "login")
+    normalized = normalized.replace("sign in", "login")
+    normalized = normalized.replace("password reset", "reset password")
+    normalized = " ".join(normalized.split())
+    return normalized
+
+
 def build_incident_text(incident: dict) -> str:
     """Build text representation for embedding"""
     parts = [
-        f"Issue: {incident.get('initial_message', 'unknown')}",
-        f"Type: {incident.get('issue_type', 'unknown')}",
-        f"Product Area: {incident.get('product_area', 'unknown')}",
+        f"Issue: {normalize_support_text(incident.get('initial_message')) or 'unknown'}",
+        f"Type: {normalize_support_text(incident.get('issue_type')) or 'unknown'}",
+        f"Product Area: {normalize_support_text(incident.get('product_area')) or 'unknown'}",
         f"Priority: {incident.get('priority', 'unknown')}",
-        f"Platform: {incident.get('platform', 'unknown')}",
+        f"Platform: {normalize_support_text(incident.get('platform')) or 'unknown'}",
     ]
     return " | ".join(parts)
 
@@ -109,48 +121,6 @@ def generate_embedding_task(incident_id: int):
             status="error",
             error=str(e),
         )
-
-
-def retrain_severity_model_task(job_id: str, min_samples: int = 1000):
-    """
-    Background task: Retrain Random Forest severity model
-    Called by POST /batch/retrain
-    """
-    print(f"[Background] Starting model retraining job {job_id}")
-    start_time = time.time()
-    
-    try:
-        with get_db_connection_context() as conn:
-            # Check available samples
-            with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM incidents WHERE priority IS NOT NULL")
-                count = cur.fetchone()[0]
-            
-            if count < min_samples:
-                print(f"[Background] ✗ Insufficient samples: {count} < {min_samples}")
-                return
-            
-            print(f"[Background] Found {count} samples. Starting retraining...")
-            
-            # Import training function from ml/severity_model.py
-            from ml.severity_model import train_severity_model
-            
-            # This would call the actual training function
-            # For now, we'll simulate the retraining process
-            # In production, you'd call: train_severity_model()
-            
-            print(f"[Background] Training model with {count} samples...")
-            time.sleep(2)  # Simulate training time
-            
-            duration = time.time() - start_time
-            print(f"[Background] ✓ Model retraining completed in {duration:.2f}s")
-            
-            # TODO: Store retraining metadata in database
-            # - job_id, status, duration, accuracy, timestamp
-    
-    except Exception as e:
-        print(f"[Background] ✗ Error in retraining job {job_id}: {e}")
-
 
 def bulk_generate_embeddings_task(batch_size: int = 100):
     """

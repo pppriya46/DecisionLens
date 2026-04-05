@@ -75,20 +75,33 @@ def generate_rag_response(query_text: str, query_category: str = None, query_emb
 
 
     system_prompt = (
-        "You are an IT support assistant. Use the similar incidents to produce concise, "
-        "actionable troubleshooting steps. Highlight the most repeated fix pattern and note "
-        "when escalation may be needed."
+        "You are a support triage assistant.\n\n"
+        "Your job is to produce short, practical troubleshooting guidance for a support analyst "
+        "using only the retrieved historical incidents and their past resolutions.\n\n"
+        "Rules:\n"
+        "- Use only the provided incident context and source resolutions.\n"
+        "- Do not invent fixes that are not supported by the sources.\n"
+        "- If multiple sources suggest the same fix, summarize it once.\n"
+        "- Do not repeat the same troubleshooting step in different words.\n"
+        "- Keep the answer concise and operational.\n"
+        "- If the sources are weak or mixed, say the guidance is tentative.\n\n"
+        "Return exactly this format:\n"
+        "Likely issue: <one sentence>\n\n"
+        "Next steps:\n"
+        "1. <one short sentence>\n"
+        "2. <one short sentence>\n"
+        "3. <one short sentence>\n\n"
+        "Escalate if: <one sentence>"
     )
 
-    user_prompt = f"""User query: {query_text}
+    user_prompt = f"""Current incident:
+Description: {query_text}
+Issue category: {query_category or 'unknown'}
 
-Similar incidents:
+Retrieved historical incidents:
 {context}
 
-Return:
-- 3 to 5 concrete troubleshooting steps
-- 1 short escalation note if needed
-- Keep the answer concise"""
+Write short support guidance for the current incident using only the retrieved incidents."""
 
     print("[RAG] Calling GPT-4...")
     llm_start_ms = now_ms()
@@ -98,8 +111,8 @@ Return:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        temperature=0.7,
-        max_tokens=500
+        temperature=0.2,
+        max_tokens=220
     )
     llm_duration_ms = elapsed_ms(llm_start_ms)
     emit_latency(

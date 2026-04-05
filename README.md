@@ -1,66 +1,125 @@
 # DecisionLens
 
+![alt text](image.png)
+
+DecisionLens is a support incident intelligence workspace that uses semantic search and GPT-assisted guidance to improve triage and issue resolution.
+
+Instead of treating tickets as isolated records, it turns historical incidents into a searchable system that helps answer:
+
+- Have we seen this issue before?
+- Which past incidents are most relevant?
+- What should the support analyst do next?
+
+The system is designed around a realistic support workflow, focusing on how historical incident knowledge can be reused during intake and triage.
+
+## Why I built it
+
+Support teams accumulate large volumes of incident history, but that knowledge is difficult to reuse quickly during intake and triage. Useful fixes and recurring issue patterns are often buried in past tickets.
+
+DecisionLens explores how a support workspace can:
+
+- perform semantic retrieval instead of keyword search
+- surface likely duplicates during intake
+- provide relevant historical context for triage
+- generate grounded troubleshooting guidance using RAG
+
 ## What it does
 
-DecisionLens is an incident resolution system that helps surface similar historical support cases
-and generate troubleshooting guidance for new incidents. It combines semantic search over past
-tickets with an LLM-assisted resolution flow so support teams can investigate issues faster and
-more consistently.
+DecisionLens combines:
 
-## Why I built this
+- semantic retrieval over 100K+ incidents
+- duplicate-aware intake review
+- RAG-based troubleshooting guidance using GPT-4
 
-I built this project to explore how retrieval, reranking, and LLM-based generation can work
-together in a practical support workflow. I also wanted to turn a simple semantic-search idea
-into a more complete system with measurable performance, evaluation, and deployment setup.
+The system supports:
 
-## How it works
+1. Creating a new incident from an intake form
+2. Reviewing similar or duplicate incidents before submission
+3. Opening an incident by ID or ticket ID
+4. Retrieving semantically similar historical incidents
+5. Generating structured troubleshooting guidance from retrieved cases
 
-- API layer: FastAPI exposes endpoints for incident creation, retrieval, similarity search,
-  resolution generation, health checks, and ML status reporting.
-- Database: PostgreSQL stores incidents, embeddings, and model-related metadata, with pgvector
-  IVFFlat indexing used for semantic retrieval.
-- Processing logic: incident text is embedded with OpenAI, similar resolved incidents are fetched
-  with pgvector cosine search, results are reranked using operational signals like priority,
-  status, and recency, and GPT-4 generates troubleshooting guidance from the top matches.
+The frontend is implemented as a React-based incident workspace, designed to simulate a production-style support interface.
+
+## Core workflow
+
+### 1. Intake
+
+A user describes a new issue and can optionally provide:
+
+- affected area
+- issue category
+
+Before submission, the system performs a duplicate-aware review to surface:
+
+- likely duplicate requests
+- related historical incidents
+- contextual signals for better triage decisions
+
+### 2. Incident retrieval
+
+Once an incident is opened, DecisionLens retrieves similar incidents using OpenAI embeddings and pgvector.
+
+The retrieval pipeline includes:
+
+- vector similarity search (<50ms retrieval latency)
+- reranking using relevance, recency, and priority signals
+- grouping repetitive incident templates into representative results
+
+### 3. Guided next steps
+
+Retrieved incidents are used as RAG context for GPT-4.
+
+The system generates structured troubleshooting guidance:
+
+- likely issue
+- next steps
+- escalation conditions
+
+This allows support analysts to convert historical incident knowledge into actionable guidance quickly.
 
 ## Architecture
 
 ```text
-Incident data
+React incident workspace
+    |
+    +--> intake panel
+    +--> incident workspace
+    +--> source-case sidebar
     |
     v
-PostgreSQL + pgvector
+FastAPI backend
     |
-    +--> incident records
-    +--> stored embedding vectors
-    |
-    v
-FastAPI API
-    |
-    +--> create incident
-    +--> fetch incident
-    +--> search similar incidents
-    +--> generate resolution
-    |
-    v
-Retrieval pipeline
-    |
-    +--> OpenAI embeddings
-    +--> pgvector similarity search
-    +--> priority/status/recency reranking
-    |
-    v
-GPT-4 resolution generation
-    |
-    v
-API response + stored resolution
+    +--> PostgreSQL (incident storage)
+    +--> pgvector (semantic search, <50ms)
+    +--> OpenAI embeddings (vector generation)
+    +--> duplicate-aware intake logic
+    +--> GPT-4 RAG workflow
 ```
 
-## Run locally
+## Tech stack
 
-### Option 1: Docker
+- Frontend: React, Vite, CSS
+- Backend: FastAPI, Pydantic, Uvicorn
+- Database: PostgreSQL with pgvector
+- Search: OpenAI embeddings + cosine similarity
+- LLM: GPT-4 with retrieval-augmented generation
+- Data tooling: pandas, NumPy
+- Deployment: Docker, Docker Compose, Nginx
 
-Start the app stack:
+## Running locally
+
+### Frontend demo workspace
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Runs the React workspace locally with mock incident data and local state.
+
+### Full stack
 
 ```bash
 docker compose up --build
@@ -72,62 +131,63 @@ Available services:
 - API: `http://localhost:5000`
 - API docs: `http://localhost:5000/docs`
 
-On a fresh Docker volume, PostgreSQL initializes the schema automatically from
-[db/schema.sql](/Users/priya/Desktop/Projects/DecisionLens/db/schema.sql).
-
-If you want to reset the stack:
-
-```bash
-docker compose down -v
-docker compose up --build
-```
-
-If you want to load the incident dataset:
+### Load historical incidents
 
 ```bash
 docker compose run --rm api python data/load_incidents.py
 ```
 
-If you want to generate embeddings:
+### Generate embeddings
 
 ```bash
 docker compose run --rm api python ml/embedding_service.py
 ```
 
-### Option 2: Manual
+This one-time step makes the dataset searchable.  
+New incidents generate embeddings automatically in the background.
 
-Start PostgreSQL first, then run:
+### Backend only
 
 ```bash
 source venv/bin/activate
 uvicorn api.main:app --reload --host 0.0.0.0 --port 5000
 ```
 
-For the frontend:
+## Testing & Evaluation
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Validation during development included:
 
-## What I Learned
+### Basic checks
 
-- Instrumentation matters. Adding latency breakdowns made it much easier to identify the real
-  bottlenecks instead of guessing.
-- Retrieval quality is not just about raw vector similarity. Reranking with operational signals
-  made the results more useful without materially hurting semantic relevance.
-- End-to-end performance depends on the full pipeline. Once retrieval became fast, the main
-  latency bottleneck shifted to prompt size and LLM response time.
-- Clean deployment and reproducibility are part of the project quality, not just the model logic.
+- frontend build validation
+- backend startup and route validation
 
-## Future improvements
+### Manual workflow testing
 
-- Scaling: add stronger bulk-ingestion and background job orchestration for larger datasets and
-  higher request volume.
-- Monitoring: add richer production-style observability for latency, error tracking, and model
-  usage over time.
-- Retrieval quality: expand the evaluation set and improve relevance labeling beyond the current
-  labeled benchmark set.
-- Resolution generation: test faster model options and selective caching for lower end-to-end
-  latency.
+- create and review incidents from intake
+- validate duplicate suggestions before submission
+- run semantic retrieval from workspace
+- regenerate guided troubleshooting steps
+
+### Evaluation support
+
+- evaluation datasets for duplicate detection and RAG quality
+- scripts for threshold tuning and retrieval validation
+
+These ensure retrieval results and generated guidance are directionally useful.
+
+## Project scope
+
+### Implemented
+
+- semantic retrieval over historical incidents
+- duplicate-aware intake workflow
+- RAG-based troubleshooting guidance
+- backend + frontend integration
+- low-latency vector search
+
+### In progress
+
+- duplicate threshold tuning
+- prompt and retrieval improvements
+- deeper frontend-backend integration

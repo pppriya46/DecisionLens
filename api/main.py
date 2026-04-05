@@ -1,13 +1,12 @@
 """
-FastAPI Application - DecisionLens Phase 2
-RESTful API with RAG, Vector Search, and ML Integration
+FastAPI Application for DecisionLens
+RESTful API for incident intake, retrieval, and GPT-assisted troubleshooting
 """
 
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
-import os
 import psycopg2
 import psycopg2.extras
 import uuid
@@ -20,19 +19,23 @@ from api.models import (
     SimilarIncidentsResponse,
     ResolveIncidentRequest, ResolveIncidentResponse,
     GetIncidentResponse, HealthCheckResponse,
-    MLStatusResponse, RetrainModelRequest, RetrainResponse,
-    IncidentDetail, SeverityPrediction, SimilarIncident,
-    DatabaseHealth, ModelHealth
+    CheckDuplicatesRequest, CheckDuplicatesResponse,
+    SubmitDuplicateReviewRequest, DuplicateReviewResponse,
+    IncidentDetail, SimilarIncident, DuplicateCandidate,
+    DatabaseHealth
 )
-from api.dependencies import get_db_connection, verify_openai_key, get_model_path
-from api.background_tasks import generate_embedding_task, retrain_severity_model_task
+from api.dependencies import get_db_connection, verify_openai_key
+from api.background_tasks import generate_embedding_task
 
 # Import existing services
-from api.search_service import search_similar_incidents
+from api.search_service import search_similar_incidents, search_duplicate_incidents
 from api.rag_service import generate_rag_response
-from ml.predict_severity import predict_severity
 
 load_dotenv()
+
+
+def generate_ticket_id() -> str:
+    return f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
 
 def get_stored_incident_embedding(conn, incident_id: int):
@@ -49,7 +52,7 @@ def get_stored_incident_embedding(conn, incident_id: int):
 
 app = FastAPI(
     title="DecisionLens API",
-    description="AI-powered IT Support RAG System with Vector Search and ML Predictions",
+    description="Incident intelligence API with semantic search, duplicate-aware intake, and GPT-assisted troubleshooting",
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -100,34 +103,25 @@ async def create_incident(
 ):
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT id FROM incidents WHERE ticket_id = %s", (incident.ticket_id,))
-            if cur.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Incident with ticket_id '{incident.ticket_id}' already exists"
-                )
+            ticket_id = generate_ticket_id()
+            while True:
+                cur.execute("SELECT id FROM incidents WHERE ticket_id = %s", (ticket_id,))
+                if not cur.fetchone():
+                    break
+                ticket_id = generate_ticket_id()
             
             cur.execute("""
                 INSERT INTO incidents (
-                    ticket_id, initial_message, customer_id, customer_segment,
-                    channel, product_area, issue_type, priority, status,
-                    platform, region, has_attachment, created_at
+                    ticket_id, initial_message, product_area, issue_type, status, created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                VALUES (%s, %s, %s, %s, %s, NOW())
                 RETURNING id, ticket_id, status, created_at
             """, (
-                incident.ticket_id,
+                ticket_id,
                 incident.initial_message,
-                incident.customer_id,
-                incident.customer_segment,
-                incident.channel,
                 incident.product_area,
                 incident.issue_type,
-                incident.priority.value if incident.priority else "medium",
                 "open",
-                incident.platform,
-                incident.region,
-                incident.has_attachment
             ))
             
             result = cur.fetchone()
@@ -151,7 +145,7 @@ async def create_incident(
         )
 
 
-# ==================== ENDPOINT 2: GET INCIDENT WITH PREDICTIONS ====================
+# ==================== ENDPOINT 2: GET INCIDENT ====================
 
 @app.get("/incidents/{incident_id}", response_model=GetIncidentResponse)
 async def get_incident(
@@ -180,30 +174,7 @@ async def get_incident(
                 )
         
         incident = IncidentDetail(**incident_data)
-        
-        try:
-            prediction_result = predict_severity(
-                category=incident_data.get('issue_type', 'Unknown'),
-                subcategory=incident_data.get('product_area', 'Unknown'),
-                contact_type="Web",
-                reassignment_count=0,
-                reopen_count=0,
-                sys_mod_count=1,
-                made_sla=True,
-                knowledge=False,
-                initial_message=incident_data.get('initial_message', ''),
-                customer_sentiment=incident_data.get('customer_sentiment', 'neutral') or 'neutral',
-            )
-            predictions = SeverityPrediction(**prediction_result)
-        
-        except Exception as e:
-            print(f"[Warning] Severity prediction failed: {e}")
-            predictions = SeverityPrediction(
-                predicted_priority="medium",
-                confidence=0.0,
-                all_probabilities={}
-            )
-        
+
         similar_incidents = []
         if include_similar and incident_data.get('initial_message'):
             try:
@@ -223,7 +194,6 @@ async def get_incident(
         
         return GetIncidentResponse(
             incident=incident,
-            predictions=predictions,
             similar_incidents=similar_incidents
         )
     
@@ -233,6 +203,65 @@ async def get_incident(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving incident: {str(e)}"
+        )
+
+
+@app.get("/incidents/by-ticket/{ticket_id}", response_model=GetIncidentResponse)
+async def get_incident_by_ticket(
+    ticket_id: str,
+    include_similar: bool = False,
+    conn=Depends(get_db_connection)
+):
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT 
+                    id, ticket_id, status, issue_type, product_area, priority,
+                    initial_message, resolution_summary, created_at,
+                    resolution_time_hours, customer_sentiment, csat_score,
+                    platform, region
+                FROM incidents
+                WHERE ticket_id = %s
+            """, (ticket_id,))
+
+            incident_data = cur.fetchone()
+
+            if not incident_data:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Ticket {ticket_id} not found"
+                )
+
+        incident = IncidentDetail(**incident_data)
+
+        similar_incidents = []
+        if include_similar and incident_data.get('initial_message'):
+            try:
+                stored_embedding = get_stored_incident_embedding(conn, incident_data['id'])
+                search_result = search_similar_incidents(
+                    query_text=incident_data['initial_message'],
+                    query_category=incident_data.get('issue_type'),
+                    query_embedding=stored_embedding,
+                    top_k=20,
+                    top_n=5
+                )
+                similar_incidents = [
+                    SimilarIncident(**inc) for inc in search_result.get('results', [])
+                ]
+            except Exception as e:
+                print(f"[Warning] Similar incidents search failed: {e}")
+
+        return GetIncidentResponse(
+            incident=incident,
+            similar_incidents=similar_incidents
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving ticket: {str(e)}"
         )
 
 
@@ -307,6 +336,131 @@ async def get_similar_incidents(
             status=status_label,
             embedding_source=search_result.get('embedding_source') if 'search_result' in locals() else None,
             search_timings_ms=search_timings,
+            duration_ms=elapsed_ms(request_start_ms),
+        )
+
+
+# ==================== ENDPOINT 3B: CHECK DUPLICATES ====================
+
+@app.post("/incidents/check-duplicates", response_model=CheckDuplicatesResponse)
+async def check_duplicates(request: CheckDuplicatesRequest):
+    request_start_ms = now_ms()
+    status_label = "success"
+    duplicate_timings = {}
+
+    try:
+        duplicate_result = search_duplicate_incidents(
+            query_text=request.initial_message,
+            query_issue_type=request.issue_type,
+            query_product_area=request.product_area,
+            top_k=request.top_k,
+            top_n=request.top_n,
+        )
+        duplicate_timings = duplicate_result.get("timings_ms", {})
+
+        return CheckDuplicatesResponse(
+            query=duplicate_result["query"],
+            classification=duplicate_result["classification"],
+            explanation=duplicate_result["explanation"],
+            total_candidates=duplicate_result["total_candidates"],
+            top_match_score=duplicate_result["top_match_score"],
+            results=[DuplicateCandidate(**item) for item in duplicate_result["results"]],
+        )
+
+    except HTTPException:
+        status_label = "http_error"
+        raise
+    except Exception as e:
+        status_label = "error"
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error checking duplicates: {str(e)}"
+        )
+    finally:
+        emit_latency(
+            "api_request",
+            endpoint="/incidents/check-duplicates",
+            top_k=request.top_k,
+            top_n=request.top_n,
+            requested_issue_type=request.issue_type,
+            requested_product_area=request.product_area,
+            status=status_label,
+            duplicate_timings_ms=duplicate_timings,
+            duration_ms=elapsed_ms(request_start_ms),
+        )
+
+
+# ==================== ENDPOINT 3C: STORE DUPLICATE REVIEW ====================
+
+@app.post("/duplicate-reviews", response_model=DuplicateReviewResponse, status_code=status.HTTP_201_CREATED)
+async def submit_duplicate_review(
+    request: SubmitDuplicateReviewRequest,
+    conn=Depends(get_db_connection)
+):
+    request_start_ms = now_ms()
+    status_label = "success"
+
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT id FROM incidents WHERE id = %s", (request.matched_incident_id,))
+            if not cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Matched incident {request.matched_incident_id} not found"
+                )
+
+            cur.execute("""
+                INSERT INTO duplicate_reviews (
+                    reported_ticket_id,
+                    query_text,
+                    matched_incident_id,
+                    decision,
+                    issue_type,
+                    product_area
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                request.reported_ticket_id,
+                request.query_text,
+                request.matched_incident_id,
+                request.decision.value,
+                request.issue_type,
+                request.product_area,
+            ))
+            review = cur.fetchone()
+            conn.commit()
+
+        return DuplicateReviewResponse(
+            review_id=review["id"],
+            status="stored",
+            message=f"Stored '{request.decision.value}' review for incident {request.matched_incident_id}."
+        )
+
+    except HTTPException:
+        status_label = "http_error"
+        raise
+    except psycopg2.Error as e:
+        status_label = "db_error"
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+    except Exception as e:
+        status_label = "error"
+        conn.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error storing duplicate review: {str(e)}"
+        )
+    finally:
+        emit_latency(
+            "api_request",
+            endpoint="/duplicate-reviews",
+            matched_incident_id=request.matched_incident_id,
+            decision=request.decision.value,
+            status=status_label,
             duration_ms=elapsed_ms(request_start_ms),
         )
 
@@ -414,13 +568,7 @@ async def health_check(conn=Depends(get_db_connection)):
             embeddings_count=embeddings_count,
             missing_embeddings=missing_embeddings
         )
-        
-        try:
-            model_path = get_model_path("severity")
-            model_health = ModelHealth(severity_model_loaded=True, model_version="v1", model_path=model_path)
-        except:
-            model_health = ModelHealth(severity_model_loaded=False, model_version="unknown", model_path="not found")
-        
+
         try:
             verify_openai_key()
             openai_status = "configured"
@@ -429,7 +577,6 @@ async def health_check(conn=Depends(get_db_connection)):
         
         overall_status = "healthy" if (
             database_health.connected and
-            model_health.severity_model_loaded and
             openai_status == "configured"
         ) else "degraded"
         
@@ -439,103 +586,11 @@ async def health_check(conn=Depends(get_db_connection)):
             version="2.0.0",
             timestamp=datetime.utcnow(),
             database=database_health,
-            models=model_health,
             openai_api=openai_status
         )
     
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Health check failed: {str(e)}")
-
-
-# ==================== ENDPOINT 6: TRIGGER MODEL RETRAINING ====================
-
-@app.post("/batch/retrain", response_model=RetrainResponse, status_code=status.HTTP_202_ACCEPTED)
-async def retrain_model(
-    request: RetrainModelRequest,
-    background_tasks: BackgroundTasks,
-    conn=Depends(get_db_connection)
-):
-    if request.model_type != "severity":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only 'severity' model is supported")
-    
-    job_id = f"retrain_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-    
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*) FROM incidents WHERE priority IS NOT NULL")
-        sample_count = cur.fetchone()[0]
-    
-    if sample_count < request.min_samples:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Insufficient samples: {sample_count} < {request.min_samples}")
-    
-    background_tasks.add_task(retrain_severity_model_task, job_id, request.min_samples)
-    
-    return RetrainResponse(
-        job_id=job_id,
-        status="started",
-        message=f"Model retraining initiated with {sample_count} samples. Check /ml/status for progress.",
-        model_type=request.model_type,
-        estimated_duration="5-10 minutes"
-    )
-
-
-# ==================== ENDPOINT 7: ML STATUS ====================
-
-@app.get("/ml/status", response_model=MLStatusResponse)
-async def get_ml_status(conn=Depends(get_db_connection)):
-    try:
-        model_info = {
-            "loaded": False,
-            "version": "unknown",
-            "path": "ml/models/severity_rf_v1.pkl",
-            "last_trained": None,
-            "accuracy": None
-        }
-        
-        try:
-            model_path = get_model_path("severity")
-            model_info["loaded"] = True
-            model_info["version"] = "v1"
-            model_mtime = os.path.getmtime(model_path)
-            model_info["last_trained"] = datetime.fromtimestamp(model_mtime).isoformat()
-        except:
-            pass
-        
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM incident_embeddings")
-            total_embeddings = cur.fetchone()[0]
-            
-            cur.execute("SELECT COUNT(*) FROM incidents")
-            total_incidents = cur.fetchone()[0]
-            
-            cur.execute("SELECT MAX(created_at) FROM incident_embeddings")
-            last_generated = cur.fetchone()[0]
-        
-        embeddings_coverage = (total_embeddings / total_incidents * 100) if total_incidents > 0 else 0
-        
-        embeddings_info = {
-            "total_embeddings": total_embeddings,
-            "total_incidents": total_incidents,
-            "coverage_percent": round(embeddings_coverage, 2),
-            "missing_count": total_incidents - total_embeddings,
-            "last_generated": last_generated.isoformat() if last_generated else None,
-            "model": "text-embedding-3-small",
-            "dimensions": 1536
-        }
-        
-        openai_info = {
-            "api_key_configured": bool(os.getenv("OPENAI_API_KEY")),
-            "models_used": ["text-embedding-3-small", "gpt-4"],
-            "note": "Detailed usage tracking requires OpenAI API integration"
-        }
-        
-        return MLStatusResponse(
-            severity_model=model_info,
-            embeddings=embeddings_info,
-            openai_usage=openai_info
-        )
-    
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error retrieving ML status: {str(e)}")
 
 
 # ==================== ROOT ====================
@@ -559,14 +614,7 @@ async def startup_event():
     print("DecisionLens FastAPI v2.0.0")
     print("="*60)
     print("✓ Application started")
-    try:
-        model_path = os.getenv("SEVERITY_MODEL_PATH", "ml/models/severity_rf_v1.pkl")
-        get_model_path("severity")
-        print(f"✓ Severity model available at {model_path}")
-    except Exception as e:
-        print(f"✗ Failed to verify severity model: {e}")
-
-    print("✓ Endpoints: 7 RESTful routes available")
+    print("✓ Endpoints: incident intake, search, duplicate review, and guided resolution")
     print("✓ Documentation: http://localhost:5000/docs")
     print("✓ Health check: http://localhost:5000/health")
     print("="*60 + "\n")

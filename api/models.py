@@ -19,47 +19,26 @@ class IncidentStatus(str, Enum):
     closed = "closed"
 
 
-class IncidentPriority(str, Enum):
-    low = "low"
-    medium = "medium"
-    high = "high"
-    critical = "critical"
-
-
-class CustomerSentiment(str, Enum):
-    positive = "positive"
-    neutral = "neutral"
-    negative = "negative"
+class DuplicateReviewDecision(str, Enum):
+    duplicate = "duplicate"
+    related = "related"
+    not_duplicate = "not_duplicate"
 
 
 # ==================== REQUEST MODELS ====================
 
 class CreateIncidentRequest(BaseModel):
     """Request body for POST /incidents"""
-    ticket_id: str = Field(..., min_length=3, max_length=20, description="Unique ticket identifier")
     initial_message: str = Field(..., min_length=10, max_length=10000, description="User's problem description")
-    customer_id: Optional[str] = Field(None, max_length=20)
-    customer_segment: Optional[str] = Field(None, max_length=50)
-    channel: Optional[str] = Field("web", max_length=50)
     product_area: Optional[str] = Field(None, max_length=100)
     issue_type: Optional[str] = Field(None, max_length=100)
-    priority: Optional[IncidentPriority] = Field(IncidentPriority.medium)
-    platform: Optional[str] = Field(None, max_length=50)
-    region: Optional[str] = Field(None, max_length=20)
-    has_attachment: Optional[bool] = False
     
     class Config:
         json_schema_extra = {
             "example": {
-                "ticket_id": "TKT-2026-0001",
                 "initial_message": "Unable to access VPN from home network. Connection times out after authentication.",
-                "customer_id": "CUST-5432",
-                "channel": "email",
                 "product_area": "Network Services",
                 "issue_type": "VPN Access",
-                "priority": "high",
-                "platform": "Windows 11",
-                "region": "US-West"
             }
         }
 
@@ -72,6 +51,48 @@ class SearchIncidentsRequest(BaseModel):
     top_n: int = Field(5, ge=1, le=20, description="Number of results to return")
 
 
+class CheckDuplicatesRequest(BaseModel):
+    """Request body for POST /incidents/check-duplicates"""
+    initial_message: str = Field(..., min_length=10, max_length=10000, description="Problem description to compare")
+    issue_type: Optional[str] = Field(None, max_length=100)
+    product_area: Optional[str] = Field(None, max_length=100)
+    top_k: int = Field(20, ge=5, le=100, description="Number of candidates to fetch")
+    top_n: int = Field(5, ge=1, le=20, description="Number of results to return")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "initial_message": "Users cannot log in after the latest SSO rollout and password reset fails.",
+                "issue_type": "SSO Login Failure",
+                "product_area": "Identity Platform",
+                "top_k": 20,
+                "top_n": 5,
+            }
+        }
+
+
+class SubmitDuplicateReviewRequest(BaseModel):
+    """Request body for POST /duplicate-reviews"""
+    reported_ticket_id: Optional[str] = Field(None, min_length=3, max_length=20)
+    query_text: str = Field(..., min_length=10, max_length=10000, description="Original ticket text reviewed")
+    matched_incident_id: int = Field(..., gt=0, description="Incident selected during duplicate review")
+    decision: DuplicateReviewDecision = Field(..., description="Analyst review decision")
+    issue_type: Optional[str] = Field(None, max_length=100)
+    product_area: Optional[str] = Field(None, max_length=100)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "reported_ticket_id": "TKT-2026-1001",
+                "query_text": "Users cannot log in after the latest SSO rollout and password reset fails.",
+                "matched_incident_id": 42,
+                "decision": "duplicate",
+                "issue_type": "SSO Login Failure",
+                "product_area": "Identity Platform",
+            }
+        }
+
+
 class ResolveIncidentRequest(BaseModel):
     """Request body for POST /incidents/{id}/resolve"""
     force_regenerate: bool = Field(False, description="Force regenerate even if resolution exists")
@@ -82,22 +103,6 @@ class ResolveIncidentRequest(BaseModel):
             "example": {
                 "force_regenerate": False,
                 "category": "network"
-            }
-        }
-
-
-class RetrainModelRequest(BaseModel):
-    """Request body for POST /batch/retrain"""
-    model_type: str = Field("severity", description="Model to retrain (currently only 'severity')")
-    min_samples: int = Field(1000, ge=100, description="Minimum samples required for retraining")
-    notify_email: Optional[str] = Field(None, description="Email to notify when complete")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "model_type": "severity",
-                "min_samples": 1000,
-                "notify_email": "admin@company.com"
             }
         }
 
@@ -125,14 +130,24 @@ class SimilarIncident(BaseModel):
     created_at: Optional[str]
     sentiment: Optional[str]
     csat_score: Optional[int]
+    related_ticket_count: int = 1
     scores: SimilarityScores
 
 
-class SeverityPrediction(BaseModel):
-    """ML severity prediction"""
-    predicted_priority: str = Field(..., description="Predicted priority level")
-    confidence: float = Field(..., ge=0, le=1, description="Model confidence")
-    all_probabilities: Dict[str, float] = Field(..., description="Probabilities for all classes")
+class DuplicateCandidate(BaseModel):
+    """Potential duplicate incident candidate"""
+    id: int
+    ticket_id: str
+    status: Optional[str]
+    issue_type: Optional[str]
+    product_area: Optional[str]
+    priority: Optional[str]
+    description: str
+    created_at: Optional[str]
+    similarity_score: float = Field(..., ge=0, le=1)
+    duplicate_score: float = Field(..., ge=0, le=1)
+    related_ticket_count: int = 1
+    match_reasons: List[str] = Field(default_factory=list)
 
 
 class IncidentDetail(BaseModel):
@@ -165,7 +180,6 @@ class CreateIncidentResponse(BaseModel):
 class GetIncidentResponse(BaseModel):
     """Response for GET /incidents/{id}"""
     incident: IncidentDetail
-    predictions: SeverityPrediction
     similar_incidents: List[SimilarIncident]
 
 
@@ -175,6 +189,23 @@ class SimilarIncidentsResponse(BaseModel):
     query: str
     total_candidates: int
     results: List[SimilarIncident]
+
+
+class CheckDuplicatesResponse(BaseModel):
+    """Response for POST /incidents/check-duplicates"""
+    query: str
+    classification: str
+    explanation: str
+    total_candidates: int
+    top_match_score: float
+    results: List[DuplicateCandidate]
+
+
+class DuplicateReviewResponse(BaseModel):
+    """Response for POST /duplicate-reviews"""
+    review_id: int
+    status: str
+    message: str
 
 
 class SourceIncident(BaseModel):
@@ -207,13 +238,6 @@ class DatabaseHealth(BaseModel):
     missing_embeddings: int
 
 
-class ModelHealth(BaseModel):
-    """Model health status"""
-    severity_model_loaded: bool
-    model_version: str
-    model_path: str
-
-
 class HealthCheckResponse(BaseModel):
     """Enhanced health check response"""
     status: str
@@ -221,43 +245,7 @@ class HealthCheckResponse(BaseModel):
     version: str
     timestamp: datetime
     database: DatabaseHealth
-    models: ModelHealth
     openai_api: str
-
-
-class ModelMetrics(BaseModel):
-    """Model training metrics"""
-    accuracy: Optional[float] = None
-    precision: Optional[float] = None
-    recall: Optional[float] = None
-    f1_score: Optional[float] = None
-
-
-class MLStatusResponse(BaseModel):
-    """Response for GET /ml/status"""
-    severity_model: Dict[str, Any]
-    embeddings: Dict[str, Any]
-    openai_usage: Dict[str, Any]
-
-
-class RetrainResponse(BaseModel):
-    """Response for POST /batch/retrain"""
-    job_id: str
-    status: str
-    message: str
-    model_type: str
-    estimated_duration: str
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "job_id": "retrain_20260307_143022_abc123",
-                "status": "started",
-                "message": "Model retraining initiated. Check /ml/status for progress.",
-                "model_type": "severity",
-                "estimated_duration": "5-10 minutes"
-            }
-        }
 
 
 class ErrorResponse(BaseModel):

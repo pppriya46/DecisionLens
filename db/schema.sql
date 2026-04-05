@@ -31,12 +31,15 @@ CREATE TABLE IF NOT EXISTS incident_embeddings (
     created_at    TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS severity_predictions (
-    id            SERIAL PRIMARY KEY,
-    incident_id   INTEGER REFERENCES incidents(id) ON DELETE CASCADE,
-    predicted_severity VARCHAR(20),
-    confidence    FLOAT,
-    created_at    TIMESTAMP DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS duplicate_reviews (
+    id                 SERIAL PRIMARY KEY,
+    reported_ticket_id VARCHAR(20),
+    query_text         TEXT NOT NULL,
+    matched_incident_id INTEGER REFERENCES incidents(id) ON DELETE CASCADE,
+    decision           VARCHAR(20) NOT NULL,
+    issue_type         VARCHAR(100),
+    product_area       VARCHAR(100),
+    created_at         TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_incidents_ticket_id    ON incidents(ticket_id);
@@ -46,6 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_incidents_priority     ON incidents(priority);
 CREATE INDEX IF NOT EXISTS idx_incidents_status       ON incidents(status);
 CREATE INDEX IF NOT EXISTS idx_incidents_product_area ON incidents(product_area);
 CREATE INDEX IF NOT EXISTS idx_embeddings_incident_id ON incident_embeddings(incident_id);
+CREATE INDEX IF NOT EXISTS idx_duplicate_reviews_matched_incident_id ON duplicate_reviews(matched_incident_id);
+CREATE INDEX IF NOT EXISTS idx_duplicate_reviews_decision ON duplicate_reviews(decision);
+CREATE INDEX IF NOT EXISTS idx_duplicate_reviews_reported_ticket_id ON duplicate_reviews(reported_ticket_id);
 
 -- Cosine-distance ANN index for semantic search.
 -- `lists = 100` is a reasonable starting point for the current ~100k-row corpus.

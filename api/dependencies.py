@@ -5,11 +5,9 @@ Database connection, dependency injection
 
 import os
 import psycopg2
-import psycopg2.extras
 from contextlib import contextmanager
 from dotenv import load_dotenv
-from fastapi import Depends, HTTPException, status
-from typing import Generator
+from fastapi import HTTPException, status
 
 load_dotenv()
 
@@ -66,19 +64,3 @@ def verify_openai_key():
             detail="OPENAI_API_KEY not configured"
         )
     return api_key
-
-
-def get_model_path(model_name: str = "severity") -> str:
-    """Get model file path"""
-    if model_name == "severity":
-        model_path = "ml/models/severity_rf_v1.pkl"
-        if not os.path.exists(model_path):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Model file not found: {model_path}"
-            )
-        return model_path
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Unknown model: {model_name}"
-    )

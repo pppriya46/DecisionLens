@@ -30,18 +30,11 @@ services:
       DB_USER: decisionlens
       DB_PASSWORD: decisionlens123
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      SEVERITY_MODEL_PATH: ml/models/severity_rf_v1.pkl
     ports:
       - "5000:5000"
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   frontend:
     build:
@@ -54,7 +47,7 @@ services:
       - "3000:80"
     depends_on:
       api:
-        condition: service_healthy
+        condition: service_started
 
 volumes:
   postgres_data:
