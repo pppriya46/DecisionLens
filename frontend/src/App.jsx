@@ -458,10 +458,10 @@ export default function App() {
             <div className="field-group">
               <label htmlFor="affected-area">
                 Affected area
-                <FieldHint text="Optional. Useful for narrowing related cases by product or team ownership." />
+                <FieldHint text="Optional. Add this if you know it. We use it as a hint, not a requirement." />
               </label>
               <select id="affected-area" value={affectedArea} onChange={(event) => setAffectedArea(event.target.value)}>
-                <option value="">Select area</option>
+                <option value="">Select if known</option>
                 {AFFECTED_AREAS.map((area) => (
                   <option key={area} value={area}>
                     {area}
@@ -473,10 +473,10 @@ export default function App() {
             <div className="field-group">
               <label htmlFor="issue-category">
                 Issue category
-                <FieldHint text="Optional. Helps match incidents with similar failure patterns." />
+                <FieldHint text="Optional. Helpful when you're confident, but the description still drives matching." />
               </label>
               <select id="issue-category" value={issueCategory} onChange={(event) => setIssueCategory(event.target.value)}>
-                <option value="">Select category</option>
+                <option value="">Select if known</option>
                 {ISSUE_CATEGORIES.map((category) => (
                   <option key={category} value={category}>
                     {category}

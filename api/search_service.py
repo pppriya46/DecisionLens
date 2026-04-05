@@ -19,10 +19,12 @@ DB_CONFIG = {
 }
 
 EMBEDDING_MODEL = "text-embedding-3-small"
-LIKELY_DUPLICATE_THRESHOLD = 0.88
-POSSIBLY_RELATED_THRESHOLD = 0.75
+LIKELY_DUPLICATE_THRESHOLD = 0.93
+POSSIBLY_RELATED_THRESHOLD = 0.82
 MIN_DISPLAY_DUPLICATE_SCORE = 0.6
 MIN_DISPLAY_SIMILARITY_SCORE = 0.45
+DUPLICATE_RETRIEVAL_FLOOR = 500
+TEXT_FAMILY_CAP = 1
 STOPWORDS = {
     "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
     "has", "have", "how", "i", "in", "is", "it", "my", "not", "of", "on",
@@ -216,6 +218,35 @@ def query_duplicate_candidates(conn, query_embedding, top_k=20):
     return results
 
 
+def dedupe_duplicate_candidates(incidents, *, limit: int):
+    deduped = []
+    seen_keys = set()
+    text_family_counts = {}
+
+    for incident in incidents:
+        family_key = normalize_support_text(incident.get("initial_message"))
+        if family_key:
+            family_count = text_family_counts.get(family_key, 0)
+            if family_count >= TEXT_FAMILY_CAP:
+                continue
+
+        group_key = build_result_group_key(
+            incident.get("initial_message"),
+            incident.get("issue_type"),
+            incident.get("product_area"),
+        )
+        if group_key in seen_keys:
+            continue
+        seen_keys.add(group_key)
+        if family_key:
+            text_family_counts[family_key] = text_family_counts.get(family_key, 0) + 1
+        deduped.append(incident)
+        if len(deduped) >= limit:
+            break
+
+    return deduped
+
+
 def build_result_group_key(description: str | None, issue_type: str | None, product_area: str | None) -> str:
     normalized_description = normalize_support_text(description)
     normalized_issue_type = normalize_support_text(issue_type) or "unknown"
@@ -239,10 +270,14 @@ def collapse_repetitive_results(results, *, top_n: int):
             grouped[group_key] = {
                 **result,
                 "related_ticket_count": 1,
+                "grouped_ticket_ids": [result.get("ticket_id")] if result.get("ticket_id") else [],
             }
             continue
 
         grouped[group_key]["related_ticket_count"] += 1
+        ticket_id = result.get("ticket_id")
+        if ticket_id and ticket_id not in grouped[group_key]["grouped_ticket_ids"]:
+            grouped[group_key]["grouped_ticket_ids"].append(ticket_id)
 
     collapsed = list(grouped.values())
     collapsed.sort(
@@ -335,6 +370,8 @@ def build_match_reasons(
     keyword_overlap: float,
     issue_match: float,
     product_match: float,
+    issue_penalty: float = 0.0,
+    product_penalty: float = 0.0,
 ) -> list[str]:
     reasons = []
 
@@ -352,9 +389,13 @@ def build_match_reasons(
 
     if issue_match:
         reasons.append("Same issue category")
+    elif issue_penalty:
+        reasons.append("Different issue category")
 
     if product_match:
         reasons.append("Same affected area")
+    elif product_penalty:
+        reasons.append("Different affected area")
 
     if not reasons:
         reasons.append("Closest available historical match")
@@ -376,15 +417,21 @@ def rerank_duplicate_candidates(
 
     for incident in incidents:
         base_score = float(incident["similarity_score"])
-        issue_match = 1.0 if query_issue_type and (incident.get("issue_type") or "").strip().lower() == query_issue_type else 0.0
-        product_match = 1.0 if query_product_area and (incident.get("product_area") or "").strip().lower() == query_product_area else 0.0
+        incident_issue_type = (incident.get("issue_type") or "").strip().lower()
+        incident_product_area = (incident.get("product_area") or "").strip().lower()
+        issue_match = 1.0 if query_issue_type and incident_issue_type == query_issue_type else 0.0
+        product_match = 1.0 if query_product_area and incident_product_area == query_product_area else 0.0
+        issue_penalty = 1.0 if query_issue_type and incident_issue_type and incident_issue_type != query_issue_type else 0.0
+        product_penalty = 1.0 if query_product_area and incident_product_area and incident_product_area != query_product_area else 0.0
         keyword_overlap = score_keyword_overlap(query_text, incident.get("initial_message"))
 
         duplicate_score = (
-            base_score * 0.72 +
-            keyword_overlap * 0.18 +
-            issue_match * 0.06 +
-            product_match * 0.04
+            base_score * 0.60 +
+            keyword_overlap * 0.16 +
+            issue_match * 0.10 +
+            product_match * 0.12 -
+            issue_penalty * 0.12 -
+            product_penalty * 0.22
         )
 
         scored.append({
@@ -398,9 +445,16 @@ def rerank_duplicate_candidates(
             "created_at": str(incident["created_at"]) if incident.get("created_at") else None,
             "similarity_score": round(base_score, 4),
             "keyword_overlap": round(keyword_overlap, 4),
-            "duplicate_score": round(min(duplicate_score, 1.0), 4),
+            "duplicate_score": round(max(0.0, min(duplicate_score, 1.0)), 4),
             "related_ticket_count": 1,
-            "match_reasons": build_match_reasons(base_score, keyword_overlap, issue_match, product_match),
+            "match_reasons": build_match_reasons(
+                base_score,
+                keyword_overlap,
+                issue_match,
+                product_match,
+                issue_penalty=issue_penalty,
+                product_penalty=product_penalty,
+            ),
         })
 
     scored.sort(key=lambda x: x["duplicate_score"], reverse=True)
@@ -600,15 +654,19 @@ def search_duplicate_incidents(
         )
         embedding_duration_ms = elapsed_ms(embedding_start_ms)
 
-        print(f"Querying pgvector for top {top_k} duplicate candidates...")
+        retrieval_top_k = max(top_k, DUPLICATE_RETRIEVAL_FLOOR)
+        print(f"Querying pgvector for top {retrieval_top_k} duplicate candidates...")
         vector_search_start_ms = now_ms()
-        raw_results = query_duplicate_candidates(conn, query_embedding, top_k)
+        raw_results = query_duplicate_candidates(conn, query_embedding, retrieval_top_k)
         vector_search_duration_ms = elapsed_ms(vector_search_start_ms)
         print(f"Found {len(raw_results)} raw duplicate candidates")
 
+        deduped_results = dedupe_duplicate_candidates(raw_results, limit=top_k)
+        print(f"Retained {len(deduped_results)} unique duplicate candidates after template dedupe")
+
         rerank_start_ms = now_ms()
         ranked_results = rerank_duplicate_candidates(
-            raw_results,
+            deduped_results,
             query_text=query_text,
             query_issue_type=query_issue_type,
             query_product_area=query_product_area,
@@ -636,9 +694,9 @@ def search_duplicate_incidents(
             component="search_duplicate_incidents",
             query_issue_type=query_issue_type,
             query_product_area=query_product_area,
-            top_k=top_k,
+            top_k=retrieval_top_k,
             top_n=top_n,
-            total_candidates=len(raw_results),
+            total_candidates=len(deduped_results),
             returned_results=len(filtered_results),
             classification=classification,
             timings_ms=timings_ms,
@@ -650,7 +708,7 @@ def search_duplicate_incidents(
             "classification": classification,
             "explanation": explanation,
             "top_match_score": round(top_match_score, 4) if top_match_score is not None else 0.0,
-            "total_candidates": len(raw_results),
+            "total_candidates": len(deduped_results),
             "results": filtered_results,
             "timings_ms": timings_ms,
         }

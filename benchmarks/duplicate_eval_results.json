@@ -1,0 +1,719 @@
+{
+  "labels_path": "data/evals/duplicate_eval_set.csv",
+  "top_k": 20,
+  "top_n": 5,
+  "summary": {
+    "total_pairs": 37,
+    "hits": 0,
+    "overall_hit_rate": 0.0,
+    "semantic_hits": 0,
+    "overall_semantic_hit_rate": 0.0,
+    "by_label": {
+      "different": {
+        "total": 12,
+        "hits": 0,
+        "hit_rate": 0.0,
+        "avg_rank_when_found": null,
+        "semantic_hits": 0,
+        "semantic_hit_rate": 0.0,
+        "avg_semantic_rank_when_found": null
+      },
+      "related": {
+        "total": 22,
+        "hits": 0,
+        "hit_rate": 0.0,
+        "avg_rank_when_found": null,
+        "semantic_hits": 0,
+        "semantic_hit_rate": 0.0,
+        "avg_semantic_rank_when_found": null
+      },
+      "same_issue": {
+        "total": 3,
+        "hits": 0,
+        "hit_rate": 0.0,
+        "avg_rank_when_found": null,
+        "semantic_hits": 0,
+        "semantic_hit_rate": 0.0,
+        "avg_semantic_rank_when_found": null
+      }
+    },
+    "classification_counts": {
+      "possibly_related": 10,
+      "likely_duplicate": 27
+    }
+  },
+  "per_pair": [
+    {
+      "query_ticket_id": "TCKT_000001",
+      "candidate_ticket_id": "TCKT_000020",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.927,
+      "returned_ticket_ids": [
+        "TCKT_033644"
+      ],
+      "returned_signatures": [
+        "account access|data export|cannot incorrect login password says system"
+      ],
+      "rationale": "Both are account-access issues but not the same exact failure mode."
+    },
+    {
+      "query_ticket_id": "TCKT_000001",
+      "candidate_ticket_id": "TCKT_000026",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.927,
+      "returned_ticket_ids": [
+        "TCKT_033644"
+      ],
+      "returned_signatures": [
+        "account access|data export|cannot incorrect login password says system"
+      ],
+      "rationale": "Both are login-access incidents with different root causes."
+    },
+    {
+      "query_ticket_id": "TCKT_000001",
+      "candidate_ticket_id": "TCKT_000010",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.927,
+      "returned_ticket_ids": [
+        "TCKT_033644"
+      ],
+      "returned_signatures": [
+        "account access|data export|cannot incorrect login password says system"
+      ],
+      "rationale": "Login failure should not be treated as a performance incident."
+    },
+    {
+      "query_ticket_id": "TCKT_000020",
+      "candidate_ticket_id": "TCKT_000026",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9188,
+      "returned_ticket_ids": [
+        "TCKT_068625"
+      ],
+      "returned_signatures": [
+        "account access|billing|2fa code fails login try when"
+      ],
+      "rationale": "Both are access issues in the same area but not the same issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000009",
+      "candidate_ticket_id": "TCKT_000008",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9112,
+      "returned_ticket_ids": [
+        "TCKT_016222"
+      ],
+      "returned_signatures": [
+        "billing problem|billing|charged duplicate month subscription was"
+      ],
+      "rationale": "Both are billing incidents but one is duplicate charge and the other is wrong tier billing."
+    },
+    {
+      "query_ticket_id": "TCKT_000009",
+      "candidate_ticket_id": "TCKT_000005",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9112,
+      "returned_ticket_ids": [
+        "TCKT_016222"
+      ],
+      "returned_signatures": [
+        "billing problem|billing|charged duplicate month subscription was"
+      ],
+      "rationale": "Both are billing amount problems with different specifics."
+    },
+    {
+      "query_ticket_id": "TCKT_000009",
+      "candidate_ticket_id": "TCKT_000061",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9112,
+      "returned_ticket_ids": [
+        "TCKT_029564"
+      ],
+      "returned_signatures": [
+        "billing problem|billing|charged duplicate month subscription was"
+      ],
+      "rationale": "Billing duplicate charge should not align with generic support text."
+    },
+    {
+      "query_ticket_id": "TCKT_000071",
+      "candidate_ticket_id": "TCKT_000059",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9537,
+      "returned_ticket_ids": [
+        "TCKT_027152"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics click dashboard error message seeing when"
+      ],
+      "rationale": "Both are analytics dashboard bugs but different symptoms."
+    },
+    {
+      "query_ticket_id": "TCKT_000071",
+      "candidate_ticket_id": "TCKT_000078",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9537,
+      "returned_ticket_ids": [
+        "TCKT_027152"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics click dashboard error message seeing when"
+      ],
+      "rationale": "Both are analytics dashboard bug reports but not the same exact issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000071",
+      "candidate_ticket_id": "TCKT_000092",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9536,
+      "returned_ticket_ids": [
+        "TCKT_027152"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics click dashboard error message seeing when"
+      ],
+      "rationale": "Both concern the same module but one is bug/error and the other is performance."
+    },
+    {
+      "query_ticket_id": "TCKT_000071",
+      "candidate_ticket_id": "TCKT_000090",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9536,
+      "returned_ticket_ids": [
+        "TCKT_027152"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics click dashboard error message seeing when"
+      ],
+      "rationale": "Same wording pattern in a different product area should not be treated as the same issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000003",
+      "candidate_ticket_id": "TCKT_000131",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9283,
+      "returned_ticket_ids": [
+        "TCKT_065548",
+        "TCKT_096924"
+      ],
+      "returned_signatures": [
+        "bug|api integration|api changes feature integration saving",
+        "bug|api integration|api click error integration message seeing when"
+      ],
+      "rationale": "Same template but different modules should not be exact duplicates."
+    },
+    {
+      "query_ticket_id": "TCKT_000003",
+      "candidate_ticket_id": "TCKT_000309",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9283,
+      "returned_ticket_ids": [
+        "TCKT_065548",
+        "TCKT_096924"
+      ],
+      "returned_signatures": [
+        "bug|api integration|api changes feature integration saving",
+        "bug|api integration|api click error integration message seeing when"
+      ],
+      "rationale": "Both are api integration bugs with different symptoms."
+    },
+    {
+      "query_ticket_id": "TCKT_000003",
+      "candidate_ticket_id": "TCKT_000308",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "possibly_related",
+      "top_match_score": 0.9283,
+      "returned_ticket_ids": [
+        "TCKT_065548",
+        "TCKT_096924"
+      ],
+      "returned_signatures": [
+        "bug|api integration|api changes feature integration saving",
+        "bug|api integration|api click error integration message seeing when"
+      ],
+      "rationale": "Both are api integration issues but different classes of failure."
+    },
+    {
+      "query_ticket_id": "TCKT_000065",
+      "candidate_ticket_id": "TCKT_000092",
+      "expected_label": "same_issue",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9692,
+      "returned_ticket_ids": [
+        "TCKT_065516"
+      ],
+      "returned_signatures": [
+        "performance|analytics dashboard|analytics dashboard module out queries timing"
+      ],
+      "rationale": "Both represent the same performance degradation pattern in analytics dashboard."
+    },
+    {
+      "query_ticket_id": "TCKT_000065",
+      "candidate_ticket_id": "TCKT_000167",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9692,
+      "returned_ticket_ids": [
+        "TCKT_065516"
+      ],
+      "returned_signatures": [
+        "performance|analytics dashboard|analytics dashboard module out queries timing"
+      ],
+      "rationale": "Same template in a different area should not be treated as the same issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000065",
+      "candidate_ticket_id": "TCKT_000010",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9692,
+      "returned_ticket_ids": [
+        "TCKT_065516"
+      ],
+      "returned_signatures": [
+        "performance|analytics dashboard|analytics dashboard module out queries timing"
+      ],
+      "rationale": "Generic performance degradation is related but less specific than a module timeout."
+    },
+    {
+      "query_ticket_id": "TCKT_000141",
+      "candidate_ticket_id": "TCKT_000190",
+      "expected_label": "same_issue",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9469,
+      "returned_ticket_ids": [
+        "TCKT_014565"
+      ],
+      "returned_signatures": [
+        "how to|analytics dashboard|analytics can configure dashboard explain properly"
+      ],
+      "rationale": "Both are how-to/setup requests for the same product area."
+    },
+    {
+      "query_ticket_id": "TCKT_000141",
+      "candidate_ticket_id": "TCKT_000588",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9469,
+      "returned_ticket_ids": [
+        "TCKT_014565"
+      ],
+      "returned_signatures": [
+        "how to|analytics dashboard|analytics can configure dashboard explain properly"
+      ],
+      "rationale": "Both are how-to requests in analytics dashboard but not the same task."
+    },
+    {
+      "query_ticket_id": "TCKT_000141",
+      "candidate_ticket_id": "TCKT_000112",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9469,
+      "returned_ticket_ids": [
+        "TCKT_014565"
+      ],
+      "returned_signatures": [
+        "how to|analytics dashboard|analytics can configure dashboard explain properly"
+      ],
+      "rationale": "Same how-to phrasing but different product area."
+    },
+    {
+      "query_ticket_id": "TCKT_000149",
+      "candidate_ticket_id": "TCKT_000046",
+      "expected_label": "same_issue",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9595,
+      "returned_ticket_ids": [
+        "TCKT_093610"
+      ],
+      "returned_signatures": [
+        "feature request|analytics dashboard|add analytics can customize dashboard option"
+      ],
+      "rationale": "Both are feature requests for deeper customization in the same module."
+    },
+    {
+      "query_ticket_id": "TCKT_000149",
+      "candidate_ticket_id": "TCKT_000409",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9595,
+      "returned_ticket_ids": [
+        "TCKT_093610"
+      ],
+      "returned_signatures": [
+        "feature request|analytics dashboard|add analytics can customize dashboard option"
+      ],
+      "rationale": "Both are feature requests in the same module but not equally specific."
+    },
+    {
+      "query_ticket_id": "TCKT_000149",
+      "candidate_ticket_id": "TCKT_000056",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9595,
+      "returned_ticket_ids": [
+        "TCKT_093610"
+      ],
+      "returned_signatures": [
+        "feature request|analytics dashboard|add analytics can customize dashboard option"
+      ],
+      "rationale": "Same template in a different module should not be treated as the same issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000070",
+      "candidate_ticket_id": "TCKT_000016",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9682,
+      "returned_ticket_ids": [
+        "TCKT_007633"
+      ],
+      "returned_signatures": [
+        "security concern|analytics dashboard|analytics dashboard functionality seems there vulnerability"
+      ],
+      "rationale": "Both are security-related but one is vulnerability reporting and one is compliance inquiry."
+    },
+    {
+      "query_ticket_id": "TCKT_000070",
+      "candidate_ticket_id": "TCKT_000058",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9682,
+      "returned_ticket_ids": [
+        "TCKT_007633"
+      ],
+      "returned_signatures": [
+        "security concern|analytics dashboard|analytics dashboard functionality seems there vulnerability"
+      ],
+      "rationale": "Same security template but different module."
+    },
+    {
+      "query_ticket_id": "TCKT_000070",
+      "candidate_ticket_id": "TCKT_000002",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9682,
+      "returned_ticket_ids": [
+        "TCKT_007633"
+      ],
+      "returned_signatures": [
+        "security concern|analytics dashboard|analytics dashboard functionality seems there vulnerability"
+      ],
+      "rationale": "Both are security issues, but one is product vulnerability and the other is account incident."
+    },
+    {
+      "query_ticket_id": "TCKT_000002",
+      "candidate_ticket_id": "TCKT_000016",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9595,
+      "returned_ticket_ids": [
+        "TCKT_085135"
+      ],
+      "returned_signatures": [
+        "security concern|billing|account login noticed suspicious"
+      ],
+      "rationale": "Both map to security concern but represent different support intents."
+    },
+    {
+      "query_ticket_id": "TCKT_000002",
+      "candidate_ticket_id": "TCKT_000001",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9595,
+      "returned_ticket_ids": [
+        "TCKT_085135"
+      ],
+      "returned_signatures": [
+        "security concern|billing|account login noticed suspicious"
+      ],
+      "rationale": "Both relate to login/account access, but one is suspicious access and the other is credential failure."
+    },
+    {
+      "query_ticket_id": "TCKT_000061",
+      "candidate_ticket_id": "TCKT_000028",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9543,
+      "returned_ticket_ids": [
+        "TCKT_053170"
+      ],
+      "returned_signatures": [
+        "other|notifications|can check off please seems something workspace"
+      ],
+      "rationale": "Both are vague/general support requests rather than precise incidents."
+    },
+    {
+      "query_ticket_id": "TCKT_000061",
+      "candidate_ticket_id": "TCKT_000071",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9543,
+      "returned_ticket_ids": [
+        "TCKT_053170"
+      ],
+      "returned_signatures": [
+        "other|notifications|can check off please seems something workspace"
+      ],
+      "rationale": "A vague support request should not outrank a precise product bug as the same issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000588",
+      "candidate_ticket_id": "TCKT_000034",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9653,
+      "returned_ticket_ids": [
+        "TCKT_003686"
+      ],
+      "returned_signatures": [
+        "how to|analytics dashboard|analytics can dashboard data export section"
+      ],
+      "rationale": "Same task wording but different product area."
+    },
+    {
+      "query_ticket_id": "TCKT_000588",
+      "candidate_ticket_id": "TCKT_000190",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9653,
+      "returned_ticket_ids": [
+        "TCKT_003686"
+      ],
+      "returned_signatures": [
+        "how to|analytics dashboard|analytics can dashboard data export section"
+      ],
+      "rationale": "Both are how-to/setup intents in analytics dashboard but not the same task."
+    },
+    {
+      "query_ticket_id": "TCKT_000078",
+      "candidate_ticket_id": "TCKT_000059",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9699,
+      "returned_ticket_ids": [
+        "TCKT_082195"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics changes dashboard feature saving"
+      ],
+      "rationale": "Both are analytics dashboard bug incidents with different symptoms."
+    },
+    {
+      "query_ticket_id": "TCKT_000078",
+      "candidate_ticket_id": "TCKT_000092",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9699,
+      "returned_ticket_ids": [
+        "TCKT_082195"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics changes dashboard feature saving"
+      ],
+      "rationale": "Both are same-module issues, but bug vs performance."
+    },
+    {
+      "query_ticket_id": "TCKT_000078",
+      "candidate_ticket_id": "TCKT_000003",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9699,
+      "returned_ticket_ids": [
+        "TCKT_082195"
+      ],
+      "returned_signatures": [
+        "bug|analytics dashboard|analytics changes dashboard feature saving"
+      ],
+      "rationale": "Same template in a different module should not be exact duplicate."
+    },
+    {
+      "query_ticket_id": "TCKT_000010",
+      "candidate_ticket_id": "TCKT_000065",
+      "expected_label": "related",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9659,
+      "returned_ticket_ids": [
+        "TCKT_019665"
+      ],
+      "returned_signatures": [
+        "performance|login auth|days degraded few last overall performance"
+      ],
+      "rationale": "Generic performance degradation should be related to a specific timeout issue."
+    },
+    {
+      "query_ticket_id": "TCKT_000010",
+      "candidate_ticket_id": "TCKT_000009",
+      "expected_label": "different",
+      "found": false,
+      "rank": null,
+      "semantic_found": false,
+      "semantic_rank": null,
+      "classification": "likely_duplicate",
+      "top_match_score": 0.9659,
+      "returned_ticket_ids": [
+        "TCKT_019665"
+      ],
+      "returned_signatures": [
+        "performance|login auth|days degraded few last overall performance"
+      ],
+      "rationale": "Performance issues should not match billing issues."
+    }
+  ]
+}

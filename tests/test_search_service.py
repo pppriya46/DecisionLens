@@ -6,6 +6,7 @@ from api.models import SubmitDuplicateReviewRequest
 from api.search_service import (
     classify_duplicate_match,
     collapse_repetitive_results,
+    dedupe_duplicate_candidates,
     filter_duplicate_candidates,
     normalize_support_text,
     rerank_duplicate_candidates,
@@ -184,6 +185,21 @@ def test_collapse_repetitive_results_keeps_representative_match():
     assert len(collapsed) == 1
     assert collapsed[0]["id"] == 1
     assert collapsed[0]["related_ticket_count"] == 2
+    assert collapsed[0]["grouped_ticket_ids"] == ["TKT-1", "TKT-2"]
+
+
+def test_dedupe_duplicate_candidates_removes_exact_template_clones():
+    candidates = [
+        build_duplicate_candidate(1, similarity=0.95, issue_type="account_access", product_area="login_auth"),
+        build_duplicate_candidate(2, similarity=0.94, issue_type="account_access", product_area="login_auth"),
+        build_duplicate_candidate(3, similarity=0.9, issue_type="account_access", product_area="billing"),
+    ]
+    candidates[1]["ticket_id"] = "TKT-2"
+    candidates[2]["initial_message"] = "My 2FA code is not working when I try to sign in."
+
+    deduped = dedupe_duplicate_candidates(candidates, limit=20)
+
+    assert [item["ticket_id"] for item in deduped] == ["TKT-1", "TKT-3"]
 
 
 def test_rerank_duplicate_candidates_prefers_matching_metadata_when_scores_are_close():
@@ -204,6 +220,44 @@ def test_rerank_duplicate_candidates_prefers_matching_metadata_when_scores_are_c
     assert ranked[0]["duplicate_score"] > ranked[1]["duplicate_score"]
     assert "Same issue category" in ranked[0]["match_reasons"]
     assert "Same affected area" in ranked[0]["match_reasons"]
+
+
+def test_rerank_duplicate_candidates_penalizes_conflicting_metadata_when_user_supplies_it():
+    incidents = [
+        build_duplicate_candidate(1, similarity=0.9, issue_type="billing", product_area="payments"),
+        build_duplicate_candidate(2, similarity=0.84, issue_type="account_access", product_area="login_auth"),
+    ]
+    incidents[0]["initial_message"] = "Users cannot log in after the SSO rollout."
+    incidents[1]["initial_message"] = "Users cannot log in after the SSO rollout."
+
+    ranked = rerank_duplicate_candidates(
+        incidents,
+        query_text="Users cannot log in after the SSO rollout.",
+        query_issue_type="account_access",
+        query_product_area="login_auth",
+        top_n=2,
+    )
+
+    assert ranked[0]["id"] == 2
+    assert "Different affected area" in ranked[1]["match_reasons"]
+
+
+def test_rerank_duplicate_candidates_keeps_metadata_optional():
+    incidents = [
+        build_duplicate_candidate(1, similarity=0.82, issue_type="billing", product_area="payments"),
+        build_duplicate_candidate(2, similarity=0.8, issue_type="account_access", product_area="login_auth"),
+    ]
+    incidents[0]["initial_message"] = "Users cannot log in after the SSO rollout."
+    incidents[1]["initial_message"] = "Generic support request with little overlap."
+
+    ranked = rerank_duplicate_candidates(
+        incidents,
+        query_text="Users cannot log in after the SSO rollout.",
+        top_n=2,
+    )
+
+    assert ranked[0]["id"] == 1
+    assert "Different affected area" not in ranked[0]["match_reasons"]
 
 
 def test_rerank_duplicate_candidates_includes_wording_reason():
@@ -258,8 +312,8 @@ def test_rerank_duplicate_candidates_prefers_keyword_overlap_for_close_scores():
 
 
 def test_classify_duplicate_match_thresholds():
-    assert classify_duplicate_match(0.9)[0] == "likely_duplicate"
-    assert classify_duplicate_match(0.8)[0] == "possibly_related"
+    assert classify_duplicate_match(0.94)[0] == "likely_duplicate"
+    assert classify_duplicate_match(0.9)[0] == "possibly_related"
     assert classify_duplicate_match(0.7)[0] == "new_issue"
     assert classify_duplicate_match(None)[0] == "new_issue"
 
